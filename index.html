@@ -2090,11 +2090,16 @@ body.haptic-flash{
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-analytics-compat.js"></script>
 <script>
 // Firebase Init
 (function(){
   var firebaseConfig={apiKey:"AIzaSyANvRzrcgecbjC8NKg3CnANfbL7cAal5yY",authDomain:"gen-lang-client-0389212046.firebaseapp.com",projectId:"gen-lang-client-0389212046",storageBucket:"gen-lang-client-0389212046.firebasestorage.app",messagingSenderId:"600528300623",appId:"1:600528300623:web:2c3de5a416d0e5c594d83a",measurementId:"G-XCZF718PW6"};
   firebase.initializeApp(firebaseConfig);
+  window.db = firebase.firestore();
+  window.analytics = null;
+  try { window.analytics = firebase.analytics(); } catch(e) { console.warn('Analytics init error:', e); }
 })();
 </script>
 </head>
@@ -3464,6 +3469,9 @@ function switchTab(tabId){
   if(tabId==='tab-discover'&&typeof initDiscover==='function')initDiscover();
   if(tabId==='tab-insights'&&typeof initInsights==='function')initInsights();
   if(tabId==='tab-profile'&&typeof initProfile==='function')initProfile();
+  // Track screen view
+  var tabNames={'tab-workout':'workout','tab-discover':'discover','tab-course':'course','tab-insights':'insights','tab-profile':'profile'};
+  if(tabNames[tabId]) trackScreenView(tabNames[tabId]);
 }
 var obStep=1,obGender='',obGoal='',obName='';
 function selectGender(g){obGender=g;document.querySelectorAll('.ob-gender-btn').forEach(function(b){b.classList.remove('selected');});var b=document.querySelector('.ob-gender-btn[data-gender="'+g+'"]');if(b)b.classList.add('selected');document.getElementById('ob-next-btn').disabled=false;}
@@ -3495,6 +3503,8 @@ function onboardingNext(){
     localStorage.setItem('dk_gender',obGender);
     localStorage.setItem('dk_goal',obGoal);
     localStorage.setItem('dk_tutorial_done','true');
+    syncToFirestore();
+    trackEvent('onboarding_complete');
     var ob=document.getElementById('onboarding');
     ob.classList.remove('active');
     setTimeout(function(){ob.style.display='none';},400);
@@ -3581,12 +3591,22 @@ function onAuthSuccess(user){
   localStorage.setItem('dk_firebase_uid',user.uid||'');
   if(user.displayName)localStorage.setItem('dk_display_name',user.displayName);
   document.getElementById('login-screen').classList.add('hidden');
-  if(localStorage.getItem('dk_onboarding_complete')==='true'){
-    document.getElementById('app').style.display='';
-    try{initWorkout();initDiscover();initCourse();initInsights();initProfile();}catch(e){}
-  }else{
-    document.getElementById('onboarding').classList.add('active');
-  }
+  
+  // Pull data from Firestore first, then init app
+  syncFromFirestore().then(function(){
+    if(localStorage.getItem('dk_onboarding_complete')==='true'){
+      document.getElementById('app').style.display='';
+      try{initWorkout();initDiscover();initCourse();initInsights();initProfile();}catch(e){}
+      // Push local data to Firestore after pulling
+      syncToFirestore();
+    }else{
+      document.getElementById('onboarding').classList.add('active');
+    }
+  });
+  
+  // Track login
+  var signInMethod = (user.providerData[0] && user.providerData[0].providerId === 'google.com') ? 'google' : 'email';
+  trackLogin(signInMethod);
 }
 
 function showVerifyScreen(email){
@@ -3689,6 +3709,7 @@ function handleSignUp(){
     showAuthLoading();
     firebase.auth().createUserWithEmailAndPassword(email,password).then(function(credential){
       hideAuthLoading();
+      trackSignUp('email');
       onAuthSuccess(credential.user);
     }).catch(function(error){
       hideAuthLoading();
@@ -3703,10 +3724,17 @@ function handleGoogleSignIn(){
     var provider=new firebase.auth.GoogleAuthProvider();
     firebase.auth().signInWithPopup(provider).then(function(result){
       hideAuthLoading();
+      // Track if this is a new Google sign-up vs returning sign-in
+      var isNew = result.additionalUserInfo && result.additionalUserInfo.isNewUser;
+      if(isNew) trackSignUp('google');
       onAuthSuccess(result.user);
     }).catch(function(error){
       hideAuthLoading();
       if(error.code==='auth/popup-closed-by-user')return;
+      if(error.code==='auth/unauthorized-domain'){
+        showLoginError('Google Sign-In is not available on this domain yet. Please use email sign-in, or contact support.');
+        return;
+      }
       showLoginError(getAuthErrorMessage(error.code));
     });
   }catch(e){console.error('Google sign-in error:',e);hideAuthLoading();}
@@ -3911,6 +3939,217 @@ function lsSet(key, val) {
 function lsGetNum(key, def) { return Number(lsGet(key, def)) || def; }
 function lsGetBool(key) { return lsGet(key, 'false') === 'true'; }
 function lsSetBool(key, val) { lsSet(key, val ? 'true' : 'false'); }
+
+/* ═══════════════════════════════════════
+   FIRESTORE SYNC HELPERS
+   ═══════════════════════════════════════ */
+function getFirebaseUid() {
+  try { var u = firebase.auth().currentUser; if(u) return u.uid; } catch(e){}
+  return lsGet('dk_firebase_uid','');
+}
+
+function isOnline() {
+  return navigator.onLine;
+}
+
+// Collect all user data from localStorage into a single object
+function collectUserData() {
+  return {
+    profile: {
+      name: lsGet('dk_name',''),
+      displayName: lsGet('dk_display_name',''),
+      email: lsGet('dk_email',''),
+      gender: lsGet('dk_gender',''),
+      goal: lsGet('dk_goal',''),
+      premium: lsGet('dk_premium','') === 'true',
+      onboardingComplete: lsGet('dk_onboarding_complete','') === 'true',
+      tutorialDone: lsGet('dk_tutorial_done','') === 'true',
+    },
+    progress: {
+      workoutDays: lsGetNum('dk_workout_days',0),
+      exerciseDays: lsGetNum('dk_exercise_days',0),
+      totalSessions: lsGetNum('dk_total_sessions',0),
+      totalMinutes: lsGetNum('dk_total_minutes',0),
+      streak: lsGetNum('dk_streak',0),
+      lastWorkoutDate: lsGet('dk_last_workout_date',''),
+      lastExerciseDayDate: lsGet('dk_last_exercise_day_date',''),
+      todaySessions: lsGetNum('dk_today_sessions',0),
+      todaySessionsDate: lsGet('dk_sessions_date',''),
+    },
+    course: {
+      completedLessons: lsGet('dk_completed_lessons',''),
+      courseProgress: lsGetNum('dk_course_progress',0),
+      unlockedLessons: lsGet('dk_course_unlocked_lessons',''),
+      lastUnlockDate: lsGet('dk_last_unlock_date',''),
+    },
+    content: {
+      bookmarks: lsGet('dk_bookmarks','[]'),
+      readArticles: lsGet('dk_read_articles','[]'),
+    },
+    settings: {
+      hapticEnabled: lsGet('dk_haptic_enabled','true'),
+      difficultyLevel: lsGet('dk_difficulty_level','beginner'),
+    },
+    sessionHistory: lsGet('dk_session_history','[]'),
+    activityMap: lsGet('dk_activity_map','{}'),
+    achievements: lsGet('dk_achievements','[]'),
+    lastSyncedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    lastActiveAt: firebase.firestore.FieldValue.serverTimestamp(),
+    platform: navigator.userAgent,
+    appVersion: '1.0.0'
+  };
+}
+
+// Push all user data to Firestore
+function syncToFirestore() {
+  var uid = getFirebaseUid();
+  if(!uid || !isOnline()) return Promise.resolve();
+  var data = collectUserData();
+  return db.collection('users').doc(uid).set(data, {merge: true}).then(function(){
+    lsSet('dk_last_firestore_sync', new Date().toISOString());
+    console.log('[Firestore] Synced successfully');
+  }).catch(function(e){
+    console.error('[Firestore] Sync error:', e);
+  });
+}
+
+// Pull user data from Firestore and update localStorage
+function syncFromFirestore() {
+  var uid = getFirebaseUid();
+  if(!uid || !isOnline()) return Promise.resolve();
+  return db.collection('users').doc(uid).get().then(function(doc){
+    if(doc.exists){
+      var d = doc.data();
+      // Profile
+      if(d.profile){
+        if(d.profile.name) lsSet('dk_name', d.profile.name);
+        if(d.profile.displayName) lsSet('dk_display_name', d.profile.displayName);
+        if(d.profile.email) lsSet('dk_email', d.profile.email);
+        if(d.profile.gender) lsSet('dk_gender', d.profile.gender);
+        if(d.profile.goal) lsSet('dk_goal', d.profile.goal);
+        if(d.profile.premium !== undefined) lsSet('dk_premium', d.profile.premium ? 'true' : 'false');
+        if(d.profile.onboardingComplete !== undefined) lsSet('dk_onboarding_complete', d.profile.onboardingComplete ? 'true' : 'false');
+        if(d.profile.tutorialDone !== undefined) lsSet('dk_tutorial_done', d.profile.tutorialDone ? 'true' : 'false');
+      }
+      // Progress - only use Firestore values if they are HIGHER than local (prevent data loss)
+      if(d.progress){
+        if(d.progress.workoutDays > lsGetNum('dk_workout_days',0)) lsSet('dk_workout_days', String(d.progress.workoutDays));
+        if(d.progress.exerciseDays > lsGetNum('dk_exercise_days',0)) lsSet('dk_exercise_days', String(d.progress.exerciseDays));
+        if(d.progress.totalSessions > lsGetNum('dk_total_sessions',0)) lsSet('dk_total_sessions', String(d.progress.totalSessions));
+        if(d.progress.totalMinutes > lsGetNum('dk_total_minutes',0)) lsSet('dk_total_minutes', String(d.progress.totalMinutes));
+        if(d.progress.streak > lsGetNum('dk_streak',0)) lsSet('dk_streak', String(d.progress.streak));
+        if(d.progress.lastWorkoutDate) lsSet('dk_last_workout_date', d.progress.lastWorkoutDate);
+        if(d.progress.lastExerciseDayDate) lsSet('dk_last_exercise_day_date', d.progress.lastExerciseDayDate);
+        if(d.progress.todaySessionsDate){
+          // Only use todaySessions if it's for today
+          if(d.progress.todaySessionsDate === todayStr()){
+            lsSet('dk_today_sessions', String(d.progress.todaySessions));
+            lsSet('dk_sessions_date', d.progress.todaySessionsDate);
+          }
+        }
+      }
+      // Course
+      if(d.course){
+        if(d.course.completedLessons) lsSet('dk_completed_lessons', d.course.completedLessons);
+        if(d.course.courseProgress !== undefined) lsSet('dk_course_progress', String(d.course.courseProgress));
+        if(d.course.unlockedLessons) lsSet('dk_course_unlocked_lessons', d.course.unlockedLessons);
+        if(d.course.lastUnlockDate) lsSet('dk_last_unlock_date', d.course.lastUnlockDate);
+      }
+      // Content
+      if(d.content){
+        if(d.content.bookmarks) lsSet('dk_bookmarks', d.content.bookmarks);
+        if(d.content.readArticles) lsSet('dk_read_articles', d.content.readArticles);
+      }
+      // Settings
+      if(d.settings){
+        if(d.settings.hapticEnabled) lsSet('dk_haptic_enabled', d.settings.hapticEnabled);
+        if(d.settings.difficultyLevel) lsSet('dk_difficulty_level', d.settings.difficultyLevel);
+      }
+      // Session history
+      if(d.sessionHistory) lsSet('dk_session_history', d.sessionHistory);
+      // Activity map
+      if(d.activityMap) lsSet('dk_activity_map', d.activityMap);
+      // Achievements
+      if(d.achievements) lsSet('dk_achievements', d.achievements);
+
+      console.log('[Firestore] Pulled data successfully');
+    }
+  }).catch(function(e){
+    console.error('[Firestore] Pull error:', e);
+  });
+}
+
+// Record a user event in Firestore for analytics tracking
+function logUserEvent(eventType, eventData) {
+  var uid = getFirebaseUid();
+  if(!uid || !isOnline()) return;
+  db.collection('users').doc(uid).collection('events').add({
+    type: eventType,
+    data: eventData || {},
+    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+    localTime: new Date().toISOString()
+  }).catch(function(e){ console.error('[Firestore] Event log error:', e); });
+}
+
+// Update just the lastActiveAt timestamp (lightweight write)
+function updateLastActive() {
+  var uid = getFirebaseUid();
+  if(!uid || !isOnline()) return;
+  db.collection('users').doc(uid).update({
+    lastActiveAt: firebase.firestore.FieldValue.serverTimestamp()
+  }).catch(function(){});
+}
+
+/* ═══════════════════════════════════════
+   ANALYTICS EVENT TRACKING
+   ═══════════════════════════════════════ */
+function trackEvent(eventName, params) {
+  try {
+    if(analytics) {
+      firebase.analytics().logEvent(eventName, params || {});
+    }
+  } catch(e) {}
+  // Also log to Firestore for custom dashboard
+  logUserEvent(eventName, params || {});
+}
+
+function trackScreenView(screenName) {
+  try {
+    if(analytics) firebase.analytics().logEvent('screen_view', {screen_name: screenName});
+  } catch(e) {}
+}
+
+function trackSignUp(method) {
+  trackEvent('sign_up', {method: method || 'email'});
+}
+
+function trackLogin(method) {
+  trackEvent('login', {method: method || 'email'});
+}
+
+function trackWorkoutStart(exerciseCount, exerciseNames) {
+  trackEvent('workout_start', {exercise_count: exerciseCount, exercises: exerciseNames});
+}
+
+function trackWorkoutComplete(duration, exercises, streak) {
+  trackEvent('workout_complete', {duration_seconds: duration, exercises: exercises, streak: streak});
+}
+
+function trackExerciseUnlock(exerciseName, dayNumber) {
+  trackEvent('exercise_unlock', {exercise_name: exerciseName, day_number: dayNumber});
+}
+
+function trackArticleRead(articleId, articleTitle) {
+  trackEvent('article_read', {article_id: articleId, article_title: articleTitle});
+}
+
+function trackCourseLessonComplete(lessonId, weekNumber) {
+  trackEvent('course_lesson_complete', {lesson_id: lessonId, week_number: weekNumber});
+}
+
+function trackPremiumUpsell(trigger) {
+  trackEvent('premium_upsell_shown', {trigger: trigger});
+}
 
 function todayStr() { return new Date().toISOString().slice(0,10); }
 
@@ -4604,7 +4843,7 @@ function renderExerciseList() {
     const lockLabel = isPremiumLocked ? 'Premium' : (exe.unlockDay > 0 ? `Day ${exe.unlockDay}` : 'Available');
     return `
       <div class="exe-card ${unlocked ? 'unlocked' : 'locked'}" data-idx="${idx}" id="exe-card-${idx}">
-        <div class="exe-card-header" onclick="${unlocked ? `toggleExerciseDetail(${idx})` : (isPremiumLocked ? `showPremiumToast()` : '')}">
+        <div class="exe-card-header" onclick="${unlocked ? `toggleExerciseDetail(${idx})` : (isPremiumLocked ? `showPremiumToast()` : `trackExerciseUnlock('${exe.name}',${exe.unlockDay})`)}">
           <div class="exe-icon-wrap ${exe.iconClass}">
             ${iconSvg(iconType)}
           </div>
@@ -4613,7 +4852,7 @@ function renderExerciseList() {
             <div class="exe-meta">${exe.description}</div>
             ${!unlocked ? `<div class="exe-lock-badge" style="${isPremiumLocked ? 'color:var(--or);background:rgba(255,155,74,.1);' : ''}">${isPremiumLocked ? '🌟 Premium' : iconSvg('lock') + ' ' + lockLabel}</div>` : ''}
           </div>
-          <div class="exe-play-btn" style="${unlocked ? '' : 'background:var(--s3);'}" onclick="event.stopPropagation();${unlocked ? `toggleExerciseDetail(${idx})` : (isPremiumLocked ? `showPremiumToast()` : '')}">
+          <div class="exe-play-btn" style="${unlocked ? '' : 'background:var(--s3);'}" onclick="event.stopPropagation();${unlocked ? `toggleExerciseDetail(${idx})` : (isPremiumLocked ? `showPremiumToast()` : `trackExerciseUnlock('${exe.name}',${exe.unlockDay})`)}">
             ${unlocked ?
               '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><polyline points="6,9 12,15 18,9"/></svg>' :
               (isPremiumLocked ? '<svg viewBox="0 0 24 24" fill="none" stroke="var(--or)" stroke-width="2" style="width:18px;height:18px;"><path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26z"/></svg>' : iconSvg('lock'))
@@ -5180,6 +5419,12 @@ function completeSession() {
 
     // Refresh UI
     renderMainUI();
+    
+    // Track workout completion
+    trackWorkoutComplete(duration, sessionExercises.map(e => e.name || e.title || 'Exercise').join(','), newStreak);
+    
+    // Sync to Firestore
+    syncToFirestore();
   });
 }
 
@@ -5283,6 +5528,7 @@ function closeStreakCelebration() {
 
 function showPremiumToast() {
   lsSet('dk_premium_interest', 'true');
+  trackPremiumUpsell('toast');
   showToast('Premium coming soon! We\'ll notify you when it launches 🌟');
 }
 
@@ -6527,6 +6773,7 @@ function drawArrow(ctx, x, y, size, up){
    INIT
    ═══════════════════════════════════════ */
 function initDiscover(){
+  trackScreenView('discover');
   buildFilterPills();
   buildRecommended();
   renderGrid();
@@ -7067,6 +7314,8 @@ function markComplete(){
     completed.push(currentLesson.id);
     recalcProgress();
     saveState();
+    trackCourseLessonComplete(currentLesson.id, currentLesson.wi);
+    syncToFirestore();
     const btn=document.getElementById('btnComplete');
     btn.textContent='✓ Completed';
     btn.className='btn-complete marked';
@@ -7134,6 +7383,7 @@ function lsSetJSON(key, val) {
    INIT & POPULATE
    ═══════════════════════════════════════ */
 function initProfile() {
+  trackScreenView('profile');
   populateProfile();
   populateStats();
   buildWeeklySummary();
@@ -8902,6 +9152,7 @@ function openArticle(id){
   const art=ARTICLES.find(a=>a.id===id);
   if(!art)return;
   currentArticle=art;
+  trackArticleRead(art.id, art.title);
   
   document.getElementById('reader-header-title').textContent=art.title;
   document.getElementById('reader-cat-badge').textContent=catLabel(art.category);
@@ -9056,6 +9307,26 @@ firebase.auth().onAuthStateChanged(function(user){
     }
   }catch(e){console.error('Auth state error:',e);}
 });
+
+// Auto-sync on app open and every 5 minutes
+(function(){
+  function autoSync(){
+    if(getFirebaseUid() && isOnline()){
+      syncToFirestore();
+    }
+  }
+  // Initial sync after 3 seconds (give auth time to settle)
+  setTimeout(autoSync, 3000);
+  // Periodic sync every 5 minutes
+  setInterval(autoSync, 300000);
+  // Sync when coming back online
+  window.addEventListener('online', function(){ setTimeout(autoSync, 1000); });
+  // Sync on page visibility change (user returns to tab)
+  document.addEventListener('visibilitychange', function(){
+    if(!document.hidden) updateLastActive();
+  });
+})();
+
 // Enter key for login form
 try{
   document.getElementById('login-email').addEventListener('keydown',function(e){if(e.key==='Enter')handleLogin();});
