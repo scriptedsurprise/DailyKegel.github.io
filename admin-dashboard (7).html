@@ -1,0 +1,1417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Daily Kegel — Admin Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore-compat.js"></script>
+<style>
+:root {
+  --bg: #0f1117;
+  --bg2: #161822;
+  --bg3: #1c1f2e;
+  --bg4: #242738;
+  --surface: #1a1d2e;
+  --border: rgba(123,97,255,0.12);
+  --border2: rgba(123,97,255,0.25);
+  --a: #7B61FF;
+  --a2: #9B85FF;
+  --a3: #5B41DF;
+  --green: #00D4A8;
+  --green2: #00A882;
+  --red: #FF6B6B;
+  --orange: #FF9B4A;
+  --pink: #FF6B9D;
+  --blue: #4A9EFF;
+  --yellow: #FFD166;
+  --t1: #EEEAFF;
+  --t2: #8E89AA;
+  --t3: #5A5675;
+  --r1: 16px;
+  --r2: 12px;
+  --r3: 8px;
+  --shadow: 0 4px 24px rgba(0,0,0,0.3);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--t1);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── LOGIN SCREEN ─── */
+#login-screen {
+  position: fixed; inset: 0; z-index: 1000;
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+#login-screen.hidden { display: none; }
+
+.login-card {
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: var(--r1);
+  padding: 40px 32px;
+  max-width: 400px; width: 100%;
+  text-align: center;
+  box-shadow: var(--shadow);
+}
+.login-logo { font-size: 48px; margin-bottom: 16px; }
+.login-title { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+.login-sub { font-size: 14px; color: var(--t2); margin-bottom: 24px; line-height: 1.5; }
+.login-input {
+  width: 100%; padding: 14px 18px;
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: var(--r2); color: var(--t1);
+  font-size: 15px; margin-bottom: 12px;
+  transition: border-color 0.2s;
+}
+.login-input::placeholder { color: var(--t3); }
+.login-input:focus { border-color: var(--a); outline: none; }
+.login-btn {
+  width: 100%; padding: 14px;
+  background: linear-gradient(135deg, #9B85FF, #7B61FF, #5B41DF);
+  color: #fff; border: none; border-radius: var(--r2);
+  font-size: 15px; font-weight: 600;
+  cursor: pointer; transition: all 0.2s;
+  margin-top: 8px;
+}
+.login-btn:hover { opacity: 0.9; }
+.login-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.login-error {
+  margin-top: 12px; padding: 10px 16px;
+  background: rgba(255,107,107,0.1);
+  border: 1px solid rgba(255,107,107,0.2);
+  border-radius: var(--r3);
+  color: var(--red); font-size: 13px;
+  display: none;
+}
+.login-error.visible { display: block; }
+.login-hint { font-size: 12px; color: var(--t3); margin-top: 16px; line-height: 1.5; }
+.login-divider { display: flex; align-items: center; gap: 12px; margin: 20px 0; color: var(--t3); font-size: 12px; }
+.login-divider::before, .login-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.google-btn {
+  width: 100%; padding: 14px;
+  background: #fff; color: #333;
+  border: none; border-radius: var(--r2);
+  font-size: 15px; font-weight: 600;
+  cursor: pointer; transition: all 0.2s;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+}
+.google-btn:hover { background: #f5f5f5; }
+.google-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.google-btn svg { width: 20px; height: 20px; }
+
+/* ─── MAIN DASHBOARD ─── */
+#dashboard { display: none; min-height: 100vh; }
+#dashboard.active { display: block; }
+
+/* Header */
+.dash-header {
+  position: sticky; top: 0; z-index: 100;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+  backdrop-filter: blur(20px);
+}
+.dash-header-left { display: flex; align-items: center; gap: 12px; }
+.dash-logo { font-size: 28px; }
+.dash-title { font-size: 20px; font-weight: 700; }
+.dash-title span { color: var(--a2); }
+.dash-header-right { display: flex; align-items: center; gap: 12px; }
+.dash-refresh {
+  padding: 8px 16px; background: var(--bg3);
+  border: 1px solid var(--border); border-radius: var(--r3);
+  color: var(--t2); font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: all 0.2s;
+}
+.dash-refresh:hover { border-color: var(--a); color: var(--a2); }
+.dash-refresh.loading { opacity: 0.5; pointer-events: none; }
+.dash-logout {
+  padding: 8px 16px; background: rgba(255,107,107,0.1);
+  border: 1px solid rgba(255,107,107,0.2); border-radius: var(--r3);
+  color: var(--red); font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: all 0.2s;
+}
+.dash-logout:hover { background: rgba(255,107,107,0.15); }
+.dash-admin-badge {
+  padding: 4px 12px; background: rgba(123,97,255,0.12);
+  border: 1px solid var(--border); border-radius: 20px;
+  font-size: 12px; color: var(--a2); font-weight: 500;
+}
+
+/* Content */
+.dash-content {
+  max-width: 1400px; margin: 0 auto;
+  padding: 24px;
+}
+
+/* Last Updated */
+.last-updated {
+  font-size: 12px; color: var(--t3); margin-bottom: 20px;
+  display: flex; align-items: center; gap: 6px;
+}
+.last-updated .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--green); animation: pulse 2s infinite;
+}
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+
+/* ─── STAT CARDS ─── */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px; margin-bottom: 28px;
+}
+.stat-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--r1); padding: 20px;
+  position: relative; overflow: hidden;
+}
+.stat-card::after {
+  content: ''; position: absolute; top: 0; left: 0; right: 0;
+  height: 3px; border-radius: 3px 3px 0 0;
+}
+.stat-card.purple::after { background: linear-gradient(90deg, var(--a2), var(--a)); }
+.stat-card.green::after { background: linear-gradient(90deg, var(--green), var(--green2)); }
+.stat-card.orange::after { background: linear-gradient(90deg, var(--yellow), var(--orange)); }
+.stat-card.pink::after { background: linear-gradient(90deg, var(--pink), var(--red)); }
+.stat-card.blue::after { background: linear-gradient(90deg, var(--blue), var(--a2)); }
+
+.stat-label { font-size: 12px; color: var(--t2); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+.stat-value { font-size: 32px; font-weight: 800; line-height: 1; }
+.stat-value.purple { color: var(--a2); }
+.stat-value.green { color: var(--green); }
+.stat-value.orange { color: var(--orange); }
+.stat-value.pink { color: var(--pink); }
+.stat-value.blue { color: var(--blue); }
+.stat-sub { font-size: 12px; color: var(--t3); margin-top: 8px; }
+.stat-trend { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; margin-top: 6px; }
+.stat-trend.up { color: var(--green); }
+.stat-trend.down { color: var(--red); }
+
+/* ─── SECTION ─── */
+.section {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--r1);
+  margin-bottom: 24px; overflow: hidden;
+}
+.section-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 12px;
+}
+.section-title { font-size: 16px; font-weight: 700; }
+.section-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* Search */
+.search-input {
+  padding: 8px 14px; background: var(--bg3);
+  border: 1px solid var(--border); border-radius: var(--r3);
+  color: var(--t1); font-size: 13px; min-width: 220px;
+  transition: border-color 0.2s;
+}
+.search-input::placeholder { color: var(--t3); }
+.search-input:focus { border-color: var(--a); outline: none; }
+
+/* Filter */
+.filter-select {
+  padding: 8px 14px; background: var(--bg3);
+  border: 1px solid var(--border); border-radius: var(--r3);
+  color: var(--t1); font-size: 13px;
+  cursor: pointer;
+}
+.filter-select option { background: var(--bg3); color: var(--t1); }
+
+/* ─── TABLE ─── */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead { background: var(--bg3); }
+th {
+  padding: 12px 16px; text-align: left;
+  font-weight: 600; color: var(--t2);
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+td {
+  padding: 14px 16px; border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+tr:hover td { background: rgba(123,97,255,0.03); }
+tr:last-child td { border-bottom: none; }
+
+.user-cell { display: flex; align-items: center; gap: 10px; }
+.user-avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--bg4); display: flex; align-items: center;
+  justify-content: center; font-size: 14px; flex-shrink: 0;
+}
+.user-name { font-weight: 600; }
+.user-email { font-size: 11px; color: var(--t3); }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 10px; border-radius: 12px;
+  font-size: 11px; font-weight: 600;
+}
+.badge-green { background: rgba(0,212,168,0.12); color: var(--green); }
+.badge-orange { background: rgba(255,155,74,0.12); color: var(--orange); }
+.badge-purple { background: rgba(123,97,255,0.12); color: var(--a2); }
+.badge-red { background: rgba(255,107,107,0.12); color: var(--red); }
+.badge-blue { background: rgba(74,158,255,0.12); color: var(--blue); }
+
+.streak-fire { display: inline-flex; align-items: center; gap: 4px; }
+.streak-fire .fire { font-size: 14px; }
+
+.progress-bar-mini {
+  width: 60px; height: 5px; background: var(--bg4);
+  border-radius: 3px; overflow: hidden; display: inline-block;
+  vertical-align: middle; margin-left: 6px;
+}
+.progress-bar-mini-fill {
+  height: 100%; border-radius: 3px;
+  background: linear-gradient(90deg, var(--a2), var(--green));
+  transition: width 0.5s;
+}
+
+/* ─── CHARTS ─── */
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 24px; margin-bottom: 24px;
+}
+.chart-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--r1); padding: 24px;
+}
+.chart-title { font-size: 14px; font-weight: 600; margin-bottom: 16px; color: var(--t2); }
+.chart-container { position: relative; height: 250px; }
+
+/* ─── USER DETAIL MODAL ─── */
+#user-modal {
+  position: fixed; inset: 0; z-index: 2000;
+  background: rgba(0,0,0,0.7);
+  display: none; align-items: center; justify-content: center;
+  padding: 20px; backdrop-filter: blur(8px);
+}
+#user-modal.active { display: flex; }
+.modal-card {
+  background: var(--bg2); border: 1px solid var(--border2);
+  border-radius: var(--r1); max-width: 600px; width: 100%;
+  max-height: 85vh; overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+.modal-header {
+  padding: 24px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; background: var(--bg2); z-index: 1;
+}
+.modal-user { display: flex; align-items: center; gap: 14px; }
+.modal-avatar {
+  width: 48px; height: 48px; border-radius: 50%;
+  background: var(--bg4); display: flex; align-items: center;
+  justify-content: center; font-size: 24px;
+}
+.modal-name { font-size: 18px; font-weight: 700; }
+.modal-email { font-size: 13px; color: var(--t2); }
+.modal-close {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--bg3); display: flex; align-items: center;
+  justify-content: center; cursor: pointer; border: none;
+  color: var(--t2); font-size: 18px; transition: all 0.2s;
+}
+.modal-close:hover { background: var(--bg4); color: var(--t1); }
+
+.modal-body { padding: 24px; }
+.modal-section { margin-bottom: 24px; }
+.modal-section-title {
+  font-size: 12px; font-weight: 600; color: var(--t3);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  margin-bottom: 12px; padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.modal-stats-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.modal-stat {
+  background: var(--bg3); border-radius: var(--r3);
+  padding: 14px;
+}
+.modal-stat-label { font-size: 11px; color: var(--t3); margin-bottom: 4px; }
+.modal-stat-value { font-size: 20px; font-weight: 700; }
+
+.modal-info-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+.modal-info-row:last-child { border-bottom: none; }
+.modal-info-label { font-size: 13px; color: var(--t2); }
+.modal-info-value { font-size: 13px; font-weight: 500; }
+
+/* ─── LOADING ─── */
+.loading-state {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 60px 20px; text-align: center;
+}
+.spinner {
+  width: 40px; height: 40px;
+  border: 3px solid var(--bg4);
+  border-top-color: var(--a);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 16px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { color: var(--t2); font-size: 14px; }
+
+/* ─── EMPTY STATE ─── */
+.empty-state { padding: 40px 20px; text-align: center; }
+.empty-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
+.empty-title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+.empty-desc { font-size: 13px; color: var(--t3); }
+
+/* ─── PAGINATION ─── */
+.pagination {
+  display: flex; align-items: center; justify-content: center;
+  gap: 8px; padding: 16px;
+}
+.page-btn {
+  padding: 8px 14px; background: var(--bg3);
+  border: 1px solid var(--border); border-radius: var(--r3);
+  color: var(--t2); font-size: 13px; cursor: pointer;
+  transition: all 0.2s;
+}
+.page-btn:hover { border-color: var(--a); color: var(--a2); }
+.page-btn.active { background: var(--a); border-color: var(--a); color: #fff; }
+.page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* ─── RESPONSIVE ─── */
+@media (max-width: 768px) {
+  .dash-content { padding: 16px; }
+  .stats-grid { grid-template-columns: 1fr 1fr; }
+  .charts-grid { grid-template-columns: 1fr; }
+  .search-input { min-width: 150px; }
+  .stat-value { font-size: 24px; }
+  .dash-header { padding: 12px 16px; }
+  .dash-title { font-size: 16px; }
+  .modal-stats-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) {
+  .stats-grid { grid-template-columns: 1fr; }
+}
+
+/* ─── EXPORT BTN ─── */
+.export-btn {
+  padding: 8px 16px; background: var(--bg3);
+  border: 1px solid var(--border); border-radius: var(--r3);
+  color: var(--t2); font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: all 0.2s;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.export-btn:hover { border-color: var(--a); color: var(--a2); }
+</style>
+</head>
+<body>
+
+<!-- ─── LOGIN SCREEN ─── -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">📊</div>
+    <div class="login-title">Admin Dashboard</div>
+    <div class="login-sub">Sign in with your Google account to access the dashboard.</div>
+    <button class="google-btn" id="google-btn" onclick="handleGoogleLogin()">
+      <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+      Sign in with Google
+    </button>
+    <div class="login-error" id="login-error"></div>
+    <div id="domain-info" style="margin-top:14px;padding:12px 16px;background:rgba(74,158,255,0.08);border:1px solid rgba(74,158,255,0.2);border-radius:8px;font-size:12px;color:#4A9EFF;text-align:left;display:none;"></div>
+    <div class="login-hint">First sign-in automatically becomes admin.<br>If you get a domain error, add the domain shown above to Firebase.</div>
+  </div>
+</div>
+
+<!-- ─── MAIN DASHBOARD ─── -->
+<div id="dashboard">
+  <!-- Header -->
+  <header class="dash-header">
+    <div class="dash-header-left">
+      <span class="dash-logo">📊</span>
+      <div class="dash-title">Daily Kegel <span>Dashboard</span></div>
+    </div>
+    <div class="dash-header-right">
+      <span class="dash-admin-badge" id="admin-badge">Admin</span>
+      <button class="dash-refresh" id="refresh-btn" onclick="refreshData()">↻ Refresh</button>
+      <button class="dash-logout" onclick="handleLogout()">Sign Out</button>
+    </div>
+  </header>
+
+  <div class="dash-content">
+    <!-- Last Updated -->
+    <div class="last-updated">
+      <span class="dot"></span>
+      <span id="last-updated-text">Loading data...</span>
+    </div>
+
+    <!-- Stat Cards -->
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-card purple">
+        <div class="stat-label">Total Users</div>
+        <div class="stat-value purple" id="stat-total-users">—</div>
+        <div class="stat-sub" id="stat-total-users-sub">Loading...</div>
+      </div>
+      <div class="stat-card green">
+        <div class="stat-label">Active Today</div>
+        <div class="stat-value green" id="stat-active-today">—</div>
+        <div class="stat-sub" id="stat-active-today-sub">Users active today</div>
+      </div>
+      <div class="stat-card orange">
+        <div class="stat-label">Total Workouts</div>
+        <div class="stat-value orange" id="stat-total-workouts">—</div>
+        <div class="stat-sub" id="stat-total-workouts-sub">Across all users</div>
+      </div>
+      <div class="stat-card pink">
+        <div class="stat-label">Avg Streak</div>
+        <div class="stat-value pink" id="stat-avg-streak">—</div>
+        <div class="stat-sub" id="stat-avg-streak-sub">Current average streak</div>
+      </div>
+      <div class="stat-card blue">
+        <div class="stat-label">7-Day Retention</div>
+        <div class="stat-value blue" id="stat-retention">—</div>
+        <div class="stat-sub" id="stat-retention-sub">Users active in last 7 days</div>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts-grid">
+      <div class="chart-card">
+        <div class="chart-title">Signups Over Time</div>
+        <div class="chart-container"><canvas id="chart-signups"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Exercise Day Distribution</div>
+        <div class="chart-container"><canvas id="chart-exercise-days"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Streak Distribution</div>
+        <div class="chart-container"><canvas id="chart-streaks"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Daily Active Users (30 Days)</div>
+        <div class="chart-container"><canvas id="chart-dau"></canvas></div>
+      </div>
+    </div>
+
+    <!-- User List -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">All Users</div>
+        <div class="section-actions">
+          <input type="text" class="search-input" id="user-search" placeholder="Search by name or email..." oninput="filterUsers()">
+          <select class="filter-select" id="filter-streak" onchange="filterUsers()">
+            <option value="all">All Streaks</option>
+            <option value="0">No Streak</option>
+            <option value="1-3">1-3 Days</option>
+            <option value="4-7">4-7 Days</option>
+            <option value="8+">8+ Days</option>
+          </select>
+          <select class="filter-select" id="filter-plan" onchange="filterUsers()">
+            <option value="all">All Plans</option>
+            <option value="free">Free</option>
+            <option value="premium">Premium</option>
+          </select>
+          <button class="export-btn" onclick="exportCSV()">⬇ Export CSV</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Streak</th>
+              <th>Workout Days</th>
+              <th>Sessions</th>
+              <th>Exercise Days</th>
+              <th>Plan</th>
+              <th>Last Active</th>
+              <th>Joined</th>
+            </tr>
+          </thead>
+          <tbody id="users-tbody">
+            <tr><td colspan="8">
+              <div class="loading-state">
+                <div class="spinner"></div>
+                <div class="loading-text">Loading users...</div>
+              </div>
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pagination" id="pagination"></div>
+    </div>
+
+    <!-- Events Log -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">Recent Activity</div>
+        <div class="section-actions">
+          <select class="filter-select" id="filter-event-type" onchange="loadEvents()">
+            <option value="all">All Events</option>
+            <option value="sign_up">Sign Ups</option>
+            <option value="login">Logins</option>
+            <option value="workout_complete">Workouts</option>
+            <option value="exercise_unlock">Unlocks</option>
+            <option value="article_read">Article Reads</option>
+            <option value="course_lesson_complete">Course Completions</option>
+            <option value="premium_upsell_shown">Premium Upsells</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>User</th>
+              <th>Event</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody id="events-tbody">
+            <tr><td colspan="4">
+              <div class="loading-state">
+                <div class="spinner"></div>
+                <div class="loading-text">Loading events...</div>
+              </div>
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── USER DETAIL MODAL ─── -->
+<div id="user-modal">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="modal-user">
+        <div class="modal-avatar" id="modal-avatar">👤</div>
+        <div>
+          <div class="modal-name" id="modal-name">—</div>
+          <div class="modal-email" id="modal-email">—</div>
+        </div>
+      </div>
+      <button class="modal-close" onclick="closeUserModal()">&times;</button>
+    </div>
+    <div class="modal-body" id="modal-body">
+      <!-- Filled dynamically -->
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════
+// FIREBASE CONFIG
+// ═══════════════════════════════════════
+var firebaseConfig = {
+  apiKey: "AIzaSyANvRzrcgecbjC8NKg3CnANfbL7cAal5yY",
+  authDomain: "gen-lang-client-0389212046.firebaseapp.com",
+  projectId: "gen-lang-client-0389212046",
+  storageBucket: "gen-lang-client-0389212046.firebasestorage.app",
+  messagingSenderId: "600528300623",
+  appId: "1:600528300623:web:2c3de5a416d0e5c594d83a",
+  measurementId: "G-XCZF718PW6"
+};
+firebase.initializeApp(firebaseConfig);
+var db = firebase.firestore();
+
+// ═══════════════════════════════════════
+// GLOBALS
+// ═══════════════════════════════════════
+var allUsers = [];
+var filteredUsers = [];
+var currentPage = 1;
+var usersPerPage = 25;
+var chartInstances = {};
+
+// ═══════════════════════════════════════
+// SHOW CURRENT DOMAIN ON LOGIN PAGE
+// ═══════════════════════════════════════
+(function showDomainInfo() {
+  var host = window.location.hostname;
+  var infoEl = document.getElementById('domain-info');
+  if (infoEl && host && host !== 'localhost' && host !== '127.0.0.1') {
+    infoEl.style.display = 'block';
+    infoEl.innerHTML = '<strong>Your domain:</strong> ' + host +
+      '<br><span style="color:#8E89AA">If login fails, add <strong>' + host +
+      '</strong> to Firebase Console → Authentication → Settings → Authorized domains</span>';
+  }
+})();
+
+// ═══════════════════════════════════════
+// ADMIN LOGIN — Google Sign-In via REDIRECT
+// Simple: any authenticated user can access.
+// Security = the dashboard URL is private (only you know it).
+// ═══════════════════════════════════════
+function handleGoogleLogin() {
+  var btn = document.getElementById('google-btn');
+  var errEl = document.getElementById('login-error');
+  btn.disabled = true;
+  btn.innerHTML = 'Redirecting to Google...';
+  errEl.classList.remove('visible');
+
+  var provider = new firebase.auth.GoogleAuthProvider();
+  firebase.auth().signInWithRedirect(provider).catch(function(error) {
+    btn.disabled = false;
+    btn.innerHTML = 'Sign in with Google';
+    if (error.code === 'auth/unauthorized-domain') {
+      var host = window.location.hostname;
+      showLoginError('Domain not authorized! Add "' + host + '" to Firebase Console > Authentication > Settings > Authorized domains.');
+    } else {
+      showLoginError(getAuthError(error.code));
+    }
+  });
+}
+
+// Handle redirect result — runs when Google sends user back
+firebase.auth().getRedirectResult().then(function(result) {
+  if (result.user) {
+    showDashboard(result.user);
+  }
+}).catch(function(error) {
+  var btn = document.getElementById('google-btn');
+  if (btn) { btn.disabled = false; btn.innerHTML = 'Sign in with Google'; }
+  if (error.code === 'auth/unauthorized-domain') {
+    var host = window.location.hostname;
+    showLoginError('Domain not authorized! Add "' + host + '" to Firebase Console > Authentication > Settings > Authorized domains.');
+  } else {
+    showLoginError(getAuthError(error.code));
+  }
+});
+
+function showLoginError(msg) {
+  var errEl = document.getElementById('login-error');
+  if (!msg) {
+    errEl.classList.remove('visible');
+    errEl.textContent = '';
+  } else {
+    errEl.textContent = msg;
+    errEl.classList.add('visible');
+  }
+}
+
+function getAuthError(code) {
+  var msgs = {
+    'auth/invalid-email': 'Invalid email address.',
+    'auth/user-not-found': 'No account found with this email.',
+    'auth/wrong-password': 'Incorrect password.',
+    'auth/too-many-requests': 'Too many attempts. Try again later.',
+    'auth/user-disabled': 'This account has been disabled.',
+    'auth/operation-not-supported-in-this-environment': 'Sign-in not supported in this browser. Try opening in a new tab.',
+    'auth/cancelled-popup-request': 'Sign-in was cancelled.'
+  };
+  return msgs[code] || 'Login failed (' + code + '). Please try again.';
+}
+
+function showDashboard(user) {
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('dashboard').classList.add('active');
+  document.getElementById('admin-badge').textContent = user.email || 'Admin';
+  loadAllData();
+}
+
+function handleLogout() {
+  firebase.auth().signOut().then(function() {
+    document.getElementById('dashboard').classList.remove('active');
+    document.getElementById('login-screen').classList.remove('hidden');
+    var btn = document.getElementById('google-btn');
+    if (btn) { btn.disabled = false; btn.innerHTML = 'Sign in with Google'; }
+  });
+}
+
+// Auto-login if already authenticated (page refresh)
+firebase.auth().onAuthStateChanged(function(user) {
+  if (user) {
+    showDashboard(user);
+  }
+});
+
+// ═══════════════════════════════════════
+// DATA LOADING
+// ═══════════════════════════════════════
+function loadAllData() {
+  loadUsers();
+}
+
+function refreshData() {
+  var btn = document.getElementById('refresh-btn');
+  btn.classList.add('loading');
+  btn.textContent = 'Loading...';
+  loadUsers();
+  setTimeout(function() {
+    btn.classList.remove('loading');
+    btn.textContent = '↻ Refresh';
+  }, 2000);
+}
+
+function loadUsers() {
+  db.collection('users').get().then(function(snapshot) {
+    allUsers = [];
+    snapshot.forEach(function(doc) {
+      var d = doc.data();
+      d._uid = doc.id;
+      allUsers.push(d);
+    });
+    filteredUsers = allUsers.slice();
+    renderStats();
+    renderUsersTable();
+    renderCharts();
+    loadEvents();
+    document.getElementById('last-updated-text').textContent = 'Last updated: ' + new Date().toLocaleString();
+  }).catch(function(e) {
+    console.error('Error loading users:', e);
+    document.getElementById('last-updated-text').textContent = 'Error loading data. Check Firestore rules.';
+  });
+}
+
+// ═══════════════════════════════════════
+// STATS
+// ═══════════════════════════════════════
+function renderStats() {
+  var total = allUsers.length;
+  var today = new Date().toISOString().slice(0, 10);
+  var sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+
+  // Active today (lastActiveAt is today)
+  var activeToday = allUsers.filter(function(u) {
+    if (!u.lastActiveAt) return false;
+    var d = u.lastActiveAt.toDate ? u.lastActiveAt.toDate() : new Date(u.lastActiveAt);
+    return d.toISOString().slice(0, 10) === today;
+  }).length;
+
+  // Total workouts
+  var totalWorkouts = allUsers.reduce(function(sum, u) {
+    return sum + (u.progress && u.progress.totalSessions ? u.progress.totalSessions : 0);
+  }, 0);
+
+  // Average streak
+  var streaks = allUsers.map(function(u) { return u.progress && u.progress.streak ? u.progress.streak : 0; });
+  var avgStreak = streaks.length > 0 ? (streaks.reduce(function(a, b) { return a + b; }, 0) / streaks.length).toFixed(1) : 0;
+
+  // 7-day retention
+  var active7Days = allUsers.filter(function(u) {
+    if (!u.lastActiveAt) return false;
+    var d = u.lastActiveAt.toDate ? u.lastActiveAt.toDate() : new Date(u.lastActiveAt);
+    return d.toISOString().slice(0, 10) >= sevenDaysAgo;
+  }).length;
+  var retention = total > 0 ? Math.round((active7Days / total) * 100) : 0;
+
+  // New signups today
+  var signupsToday = allUsers.filter(function(u) {
+    if (!u.lastSyncedAt) return false;
+    var d = u.lastSyncedAt.toDate ? u.lastSyncedAt.toDate() : new Date(u.lastSyncedAt);
+    return d.toISOString().slice(0, 10) === today;
+  }).length;
+
+  document.getElementById('stat-total-users').textContent = total;
+  document.getElementById('stat-total-users-sub').textContent = signupsToday + ' new today';
+
+  document.getElementById('stat-active-today').textContent = activeToday;
+  document.getElementById('stat-active-today-sub').textContent = total > 0 ? Math.round((activeToday / total) * 100) + '% of total' : '—';
+
+  document.getElementById('stat-total-workouts').textContent = totalWorkouts.toLocaleString();
+  document.getElementById('stat-total-workouts-sub').textContent = avgStreak + ' avg sessions/user';
+
+  document.getElementById('stat-avg-streak').textContent = avgStreak;
+  var maxStreak = streaks.length > 0 ? Math.max.apply(null, streaks) : 0;
+  document.getElementById('stat-avg-streak-sub').textContent = 'Best: ' + maxStreak + ' days';
+
+  document.getElementById('stat-retention').textContent = retention + '%';
+  document.getElementById('stat-retention-sub').textContent = active7Days + ' of ' + total + ' users';
+}
+
+// ═══════════════════════════════════════
+// USER TABLE
+// ═══════════════════════════════════════
+function filterUsers() {
+  var search = document.getElementById('user-search').value.toLowerCase();
+  var streakFilter = document.getElementById('filter-streak').value;
+  var planFilter = document.getElementById('filter-plan').value;
+
+  filteredUsers = allUsers.filter(function(u) {
+    // Search
+    if (search) {
+      var name = (u.profile && u.profile.name ? u.profile.name.toLowerCase() : '');
+      var email = (u.profile && u.profile.email ? u.profile.email.toLowerCase() : '');
+      var dname = (u.profile && u.profile.displayName ? u.profile.displayName.toLowerCase() : '');
+      if (name.indexOf(search) === -1 && email.indexOf(search) === -1 && dname.indexOf(search) === -1) return false;
+    }
+
+    // Streak filter
+    var streak = u.progress && u.progress.streak ? u.progress.streak : 0;
+    if (streakFilter === '0' && streak !== 0) return false;
+    if (streakFilter === '1-3' && (streak < 1 || streak > 3)) return false;
+    if (streakFilter === '4-7' && (streak < 4 || streak > 7)) return false;
+    if (streakFilter === '8+' && streak < 8) return false;
+
+    // Plan filter
+    var isPremium = u.profile && u.profile.premium;
+    if (planFilter === 'free' && isPremium) return false;
+    if (planFilter === 'premium' && !isPremium) return false;
+
+    return true;
+  });
+
+  currentPage = 1;
+  renderUsersTable();
+}
+
+function renderUsersTable() {
+  var tbody = document.getElementById('users-tbody');
+
+  if (filteredUsers.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-title">No users found</div><div class="empty-desc">Try adjusting your search or filters.</div></div></td></tr>';
+    renderPagination();
+    return;
+  }
+
+  var start = (currentPage - 1) * usersPerPage;
+  var end = start + usersPerPage;
+  var pageUsers = filteredUsers.slice(start, end);
+
+  tbody.innerHTML = pageUsers.map(function(u, i) {
+    var name = u.profile && u.profile.name ? u.profile.name : 'Unknown';
+    var email = u.profile && u.profile.email ? u.profile.email : '—';
+    var streak = u.progress && u.progress.streak ? u.progress.streak : 0;
+    var workoutDays = u.progress && u.progress.workoutDays ? u.progress.workoutDays : 0;
+    var sessions = u.progress && u.progress.totalSessions ? u.progress.totalSessions : 0;
+    var exerciseDays = u.progress && u.progress.exerciseDays ? u.progress.exerciseDays : 0;
+    var isPremium = u.profile && u.profile.premium;
+    var lastActive = u.lastActiveAt ? formatDate(u.lastActiveAt) : '—';
+    var joined = u.lastSyncedAt ? formatDate(u.lastSyncedAt) : '—';
+    var genderEmoji = u.profile && u.profile.gender === 'male' ? '👨' : u.profile && u.profile.gender === 'female' ? '👩' : '👤';
+
+    var streakBadge = streak === 0 ? '<span class="badge badge-orange">0</span>' :
+                      streak < 4 ? '<span class="streak-fire"><span class="fire">🔥</span> <span class="badge badge-orange">' + streak + '</span></span>' :
+                      streak < 8 ? '<span class="streak-fire"><span class="fire">🔥</span> <span class="badge badge-purple">' + streak + '</span></span>' :
+                      '<span class="streak-fire"><span class="fire">🔥</span> <span class="badge badge-green">' + streak + '</span></span>';
+
+    var planBadge = isPremium ? '<span class="badge badge-purple">Premium</span>' : '<span class="badge badge-blue">Free</span>';
+
+    var maxExDays = 21;
+    var progress = Math.min(100, Math.round((exerciseDays / maxExDays) * 100));
+
+    return '<tr onclick="showUserDetail(\'' + u._uid + '\')" style="cursor:pointer">' +
+      '<td><div class="user-cell"><div class="user-avatar">' + genderEmoji + '</div><div><div class="user-name">' + escHtml(name) + '</div><div class="user-email">' + escHtml(email) + '</div></div></div></td>' +
+      '<td>' + streakBadge + '</td>' +
+      '<td>' + workoutDays + '</td>' +
+      '<td>' + sessions + '</td>' +
+      '<td>' + exerciseDays + ' <span class="progress-bar-mini"><span class="progress-bar-mini-fill" style="width:' + progress + '%"></span></span></td>' +
+      '<td>' + planBadge + '</td>' +
+      '<td>' + lastActive + '</td>' +
+      '<td>' + joined + '</td>' +
+    '</tr>';
+  }).join('');
+
+  renderPagination();
+}
+
+function renderPagination() {
+  var totalPages = Math.ceil(filteredUsers.length / usersPerPage);
+  var pag = document.getElementById('pagination');
+
+  if (totalPages <= 1) { pag.innerHTML = ''; return; }
+
+  var html = '<button class="page-btn" onclick="goToPage(' + (currentPage - 1) + ')" ' + (currentPage === 1 ? 'disabled' : '') + '>← Prev</button>';
+
+  var startPage = Math.max(1, currentPage - 2);
+  var endPage = Math.min(totalPages, currentPage + 2);
+
+  if (startPage > 1) html += '<button class="page-btn" onclick="goToPage(1)">1</button>';
+  if (startPage > 2) html += '<span style="color:var(--t3)">...</span>';
+
+  for (var i = startPage; i <= endPage; i++) {
+    html += '<button class="page-btn' + (i === currentPage ? ' active' : '') + '" onclick="goToPage(' + i + ')">' + i + '</button>';
+  }
+
+  if (endPage < totalPages - 1) html += '<span style="color:var(--t3)">...</span>';
+  if (endPage < totalPages) html += '<button class="page-btn" onclick="goToPage(' + totalPages + ')">' + totalPages + '</button>';
+
+  html += '<button class="page-btn" onclick="goToPage(' + (currentPage + 1) + ')" ' + (currentPage === totalPages ? 'disabled' : '') + '>Next →</button>';
+
+  pag.innerHTML = html;
+}
+
+function goToPage(page) {
+  var totalPages = Math.ceil(filteredUsers.length / usersPerPage);
+  if (page < 1 || page > totalPages) return;
+  currentPage = page;
+  renderUsersTable();
+  window.scrollTo({ top: 400, behavior: 'smooth' });
+}
+
+// ═══════════════════════════════════════
+// USER DETAIL MODAL
+// ═══════════════════════════════════════
+function showUserDetail(uid) {
+  var user = allUsers.find(function(u) { return u._uid === uid; });
+  if (!user) return;
+
+  var name = user.profile && user.profile.name ? user.profile.name : 'Unknown';
+  var email = user.profile && user.profile.email ? user.profile.email : '—';
+  var genderEmoji = user.profile && user.profile.gender === 'male' ? '👨' : user.profile && user.profile.gender === 'female' ? '👩' : '👤';
+
+  document.getElementById('modal-avatar').textContent = genderEmoji;
+  document.getElementById('modal-name').textContent = name;
+  document.getElementById('modal-email').textContent = email;
+
+  var body = document.getElementById('modal-body');
+
+  var streak = user.progress && user.progress.streak ? user.progress.streak : 0;
+  var workoutDays = user.progress && user.progress.workoutDays ? user.progress.workoutDays : 0;
+  var exerciseDays = user.progress && user.progress.exerciseDays ? user.progress.exerciseDays : 0;
+  var totalSessions = user.progress && user.progress.totalSessions ? user.progress.totalSessions : 0;
+  var totalMinutes = user.progress && user.progress.totalMinutes ? user.progress.totalMinutes : 0;
+  var isPremium = user.profile && user.profile.premium;
+  var goal = user.profile && user.profile.goal ? user.profile.goal : '—';
+  var gender = user.profile && user.profile.gender ? user.profile.gender : '—';
+  var lastActive = user.lastActiveAt ? formatDateTime(user.lastActiveAt) : '—';
+  var lastSynced = user.lastSyncedAt ? formatDateTime(user.lastSyncedAt) : '—';
+
+  // Determine unlocked exercises
+  var exerciseNames = ['Short Hold', 'Quick Flick', 'Long Hold', 'Elevator', 'Breathing Sync', 'Endurance'];
+  var unlockDays = [0, 0, 4, 7, 14, 21];
+  var unlockedCount = 0;
+  var unlockedList = '';
+  exerciseNames.forEach(function(name, i) {
+    var unlocked = exerciseDays >= unlockDays[i];
+    if (unlocked) unlockedCount++;
+    unlockedList += '<div class="modal-info-row"><span class="modal-info-label">' + name + '</span><span class="modal-info-value">' +
+      (unlocked ? '<span class="badge badge-green">Unlocked</span>' : '<span class="badge badge-red">Locked (Day ' + unlockDays[i] + ')</span>') +
+      '</span></div>';
+  });
+
+  // Read articles
+  var readArticles = user.content && user.content.readArticles ? user.content.readArticles : '[]';
+  var readCount = 0;
+  try { readCount = JSON.parse(readArticles).length; } catch(e) {}
+
+  // Course progress
+  var courseProgress = user.course && user.course.courseProgress ? user.course.courseProgress : 0;
+  var completedLessons = user.course && user.course.completedLessons ? user.course.completedLessons : '';
+  var completedCount = 0;
+  try { completedCount = completedLessons.split(',').filter(function(x){return x.trim();}).length; } catch(e) {}
+
+  body.innerHTML =
+    '<div class="modal-section">' +
+      '<div class="modal-section-title">Profile</div>' +
+      '<div class="modal-info-row"><span class="modal-info-label">Gender</span><span class="modal-info-value">' + gender + '</span></div>' +
+      '<div class="modal-info-row"><span class="modal-info-label">Goal</span><span class="modal-info-value">' + escHtml(goal) + '</span></div>' +
+      '<div class="modal-info-row"><span class="modal-info-label">Plan</span><span class="modal-info-value">' + (isPremium ? '<span class="badge badge-purple">Premium</span>' : '<span class="badge badge-blue">Free</span>') + '</span></div>' +
+      '<div class="modal-info-row"><span class="modal-info-label">Onboarding Complete</span><span class="modal-info-value">' + (user.profile && user.profile.onboardingComplete ? '✅ Yes' : '❌ No') + '</span></div>' +
+    '</div>' +
+    '<div class="modal-section">' +
+      '<div class="modal-section-title">Progress</div>' +
+      '<div class="modal-stats-grid">' +
+        '<div class="modal-stat"><div class="modal-stat-label">Current Streak</div><div class="modal-stat-value" style="color:var(--pink)">' + streak + ' 🔥</div></div>' +
+        '<div class="modal-stat"><div class="modal-stat-label">Workout Days</div><div class="modal-stat-value" style="color:var(--a2)">' + workoutDays + '</div></div>' +
+        '<div class="modal-stat"><div class="modal-stat-label">Exercise Days</div><div class="modal-stat-value" style="color:var(--green)">' + exerciseDays + '</div></div>' +
+        '<div class="modal-stat"><div class="modal-stat-label">Total Sessions</div><div class="modal-stat-value" style="color:var(--orange)">' + totalSessions + '</div></div>' +
+        '<div class="modal-stat"><div class="modal-stat-label">Total Minutes</div><div class="modal-stat-value" style="color:var(--blue)">' + totalMinutes + '</div></div>' +
+        '<div class="modal-stat"><div class="modal-stat-label">Course Progress</div><div class="modal-stat-value" style="color:var(--green)">' + courseProgress + '%</div></div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="modal-section">' +
+      '<div class="modal-section-title">Exercise Unlocks (' + unlockedCount + '/' + exerciseNames.length + ')</div>' +
+      unlockedList +
+    '</div>' +
+    '<div class="modal-section">' +
+      '<div class="modal-section-title">Content</div>' +
+      '<div class="modal-info-row"><span class="modal-info-label">Articles Read</span><span class="modal-info-value">' + readCount + '</span></div>' +
+      '<div class="modal-info-row"><span class="modal-info-label">Course Lessons Done</span><span class="modal-info-value">' + completedCount + '</span></div>' +
+    '</div>' +
+    '<div class="modal-section">' +
+      '<div class="modal-section-title">Activity</div>' +
+      '<div class="modal-info-row"><span class="modal-info-label">Last Active</span><span class="modal-info-value">' + lastActive + '</span></div>' +
+      '<div class="modal-info-row"><span class="modal-info-label">Last Synced</span><span class="modal-info-value">' + lastSynced + '</span></div>' +
+      '<div class="modal-info-row"><span class="modal-info-label">Platform</span><span class="modal-info-value" style="font-size:11px;word-break:break-all;white-space:normal;max-width:300px">' + (user.platform ? escHtml(user.platform.substring(0, 80)) : '—') + '</span></div>' +
+    '</div>';
+
+  document.getElementById('user-modal').classList.add('active');
+}
+
+function closeUserModal() {
+  document.getElementById('user-modal').classList.remove('active');
+}
+
+// ═══════════════════════════════════════
+// EVENTS LOG
+// ═══════════════════════════════════════
+function loadEvents() {
+  var filterType = document.getElementById('filter-event-type').value;
+  var tbody = document.getElementById('events-tbody');
+
+  // We need to query events across all users - this requires a different approach
+  // Since events are in subcollections, we'll use a collection group query
+  var query = db.collectionGroup('events').orderBy('timestamp', 'desc').limit(100);
+
+  query.get().then(function(snapshot) {
+    if (snapshot.empty) {
+      tbody.innerHTML = '<tr><td colspan="4"><div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">No events yet</div><div class="empty-desc">Events will appear here as users interact with the app.</div></div></td></tr>';
+      return;
+    }
+
+    var events = [];
+    snapshot.forEach(function(doc) {
+      var d = doc.data();
+      d._id = doc.id;
+      d._parentUid = doc.ref.parent.parent.id;
+      events.push(d);
+    });
+
+    // Filter by type if needed
+    if (filterType !== 'all') {
+      events = events.filter(function(e) { return e.type === filterType; });
+    }
+
+    if (events.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4"><div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">No events of this type</div></div></td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = events.map(function(e) {
+      var time = e.timestamp ? formatDateTime(e.timestamp) : '—';
+      var user = allUsers.find(function(u) { return u._uid === e._parentUid; });
+      var userName = user && user.profile && user.profile.name ? user.profile.name : e._parentUid.substring(0, 8) + '...';
+      var eventType = e.type || 'unknown';
+      var details = formatEventDetails(e);
+
+      var typeBadge = '<span class="badge badge-' + getEventBadgeColor(eventType) + '">' + eventType.replace(/_/g, ' ') + '</span>';
+
+      return '<tr>' +
+        '<td>' + time + '</td>' +
+        '<td>' + escHtml(userName) + '</td>' +
+        '<td>' + typeBadge + '</td>' +
+        '<td style="max-width:300px;white-space:normal;font-size:12px;color:var(--t2)">' + details + '</td>' +
+      '</tr>';
+    }).join('');
+  }).catch(function(e) {
+    console.error('Events load error:', e);
+    tbody.innerHTML = '<tr><td colspan="4"><div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Cannot load events</div><div class="empty-desc">Make sure Firestore rules allow collection group queries.</div></div></td></tr>';
+  });
+}
+
+function getEventBadgeColor(type) {
+  var colors = {
+    'sign_up': 'green',
+    'login': 'blue',
+    'workout_start': 'purple',
+    'workout_complete': 'green',
+    'exercise_unlock': 'purple',
+    'article_read': 'orange',
+    'course_lesson_complete': 'blue',
+    'premium_upsell_shown': 'pink',
+    'onboarding_complete': 'green',
+    'screen_view': 'blue'
+  };
+  return colors[type] || 'blue';
+}
+
+function formatEventDetails(e) {
+  var d = e.data || {};
+  switch (e.type) {
+    case 'sign_up': return 'Method: ' + (d.method || 'email');
+    case 'login': return 'Method: ' + (d.method || 'email');
+    case 'workout_complete': return 'Duration: ' + (d.duration_seconds || '?') + 's, Exercises: ' + (d.exercises || '?') + ', Streak: ' + (d.streak || '?');
+    case 'workout_start': return 'Exercises: ' + (d.exercises || '?');
+    case 'exercise_unlock': return 'Exercise: ' + (d.exercise_name || '?') + ', Day: ' + (d.day_number || '?');
+    case 'article_read': return 'Article: ' + (d.article_title || d.article_id || '?');
+    case 'course_lesson_complete': return 'Lesson: ' + (d.lesson_id || '?') + ', Week: ' + (d.week_number || '?');
+    case 'premium_upsell_shown': return 'Trigger: ' + (d.trigger || '?');
+    case 'screen_view': return 'Screen: ' + (d.screen_name || '?');
+    default: return JSON.stringify(d).substring(0, 100);
+  }
+}
+
+// ═══════════════════════════════════════
+// CHARTS
+// ═══════════════════════════════════════
+function renderCharts() {
+  renderSignupsChart();
+  renderExerciseDaysChart();
+  renderStreaksChart();
+  renderDAUChart();
+}
+
+function renderSignupsChart() {
+  // Group users by signup date (using lastSyncedAt as proxy for join date)
+  var dateCounts = {};
+  allUsers.forEach(function(u) {
+    var date = u.lastSyncedAt ? formatDate(u.lastSyncedAt) : 'Unknown';
+    dateCounts[date] = (dateCounts[date] || 0) + 1;
+  });
+
+  // Get last 14 days
+  var labels = [];
+  var data = [];
+  for (var i = 13; i >= 0; i--) {
+    var d = new Date(Date.now() - i * 86400000);
+    var key = d.toISOString().slice(0, 10);
+    labels.push(d.toLocaleDateString('en', { month: 'short', day: 'numeric' }));
+    data.push(dateCounts[key] || 0);
+  }
+
+  destroyChart('chart-signups');
+  chartInstances['chart-signups'] = new Chart(document.getElementById('chart-signups'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'New Users',
+        data: data,
+        backgroundColor: 'rgba(123,97,255,0.5)',
+        borderColor: 'rgba(123,97,255,1)',
+        borderWidth: 1,
+        borderRadius: 4
+      }]
+    },
+    options: chartOptions('Signups')
+  });
+}
+
+function renderExerciseDaysChart() {
+  // Distribution of exercise days
+  var buckets = { '0': 0, '1-3': 0, '4-7': 0, '8-14': 0, '15-21': 0, '22+': 0 };
+  allUsers.forEach(function(u) {
+    var days = u.progress && u.progress.exerciseDays ? u.progress.exerciseDays : 0;
+    if (days === 0) buckets['0']++;
+    else if (days <= 3) buckets['1-3']++;
+    else if (days <= 7) buckets['4-7']++;
+    else if (days <= 14) buckets['8-14']++;
+    else if (days <= 21) buckets['15-21']++;
+    else buckets['22+']++;
+  });
+
+  destroyChart('chart-exercise-days');
+  chartInstances['chart-exercise-days'] = new Chart(document.getElementById('chart-exercise-days'), {
+    type: 'doughnut',
+    data: {
+      labels: Object.keys(buckets),
+      datasets: [{
+        data: Object.values(buckets),
+        backgroundColor: [
+          'rgba(90,86,117,0.6)',
+          'rgba(255,155,74,0.6)',
+          'rgba(74,158,255,0.6)',
+          'rgba(123,97,255,0.6)',
+          'rgba(0,212,168,0.6)',
+          'rgba(255,107,157,0.6)'
+        ],
+        borderColor: 'rgba(0,0,0,0.3)',
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { color: '#8E89AA', padding: 12, font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+function renderStreaksChart() {
+  var buckets = { '0': 0, '1-3': 0, '4-7': 0, '8-14': 0, '15-21': 0, '22+': 0 };
+  allUsers.forEach(function(u) {
+    var streak = u.progress && u.progress.streak ? u.progress.streak : 0;
+    if (streak === 0) buckets['0']++;
+    else if (streak <= 3) buckets['1-3']++;
+    else if (streak <= 7) buckets['4-7']++;
+    else if (streak <= 14) buckets['8-14']++;
+    else if (streak <= 21) buckets['15-21']++;
+    else buckets['22+']++;
+  });
+
+  destroyChart('chart-streaks');
+  chartInstances['chart-streaks'] = new Chart(document.getElementById('chart-streaks'), {
+    type: 'doughnut',
+    data: {
+      labels: Object.keys(buckets),
+      datasets: [{
+        data: Object.values(buckets),
+        backgroundColor: [
+          'rgba(90,86,117,0.6)',
+          'rgba(255,209,102,0.6)',
+          'rgba(255,155,74,0.6)',
+          'rgba(123,97,255,0.6)',
+          'rgba(0,212,168,0.6)',
+          'rgba(255,107,157,0.6)'
+        ],
+        borderColor: 'rgba(0,0,0,0.3)',
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { color: '#8E89AA', padding: 12, font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+function renderDAUChart() {
+  // Count users active on each of the last 30 days
+  // We approximate using lastActiveAt
+  var dayCounts = {};
+  for (var i = 29; i >= 0; i--) {
+    var d = new Date(Date.now() - i * 86400000);
+    dayCounts[d.toISOString().slice(0, 10)] = 0;
+  }
+
+  allUsers.forEach(function(u) {
+    if (!u.lastActiveAt) return;
+    var d = u.lastActiveAt.toDate ? u.lastActiveAt.toDate() : new Date(u.lastActiveAt);
+    var key = d.toISOString().slice(0, 10);
+    if (dayCounts[key] !== undefined) dayCounts[key]++;
+  });
+
+  var labels = [];
+  var data = [];
+  Object.keys(dayCounts).forEach(function(key) {
+    var d = new Date(key);
+    labels.push(d.toLocaleDateString('en', { month: 'short', day: 'numeric' }));
+    data.push(dayCounts[key]);
+  });
+
+  destroyChart('chart-dau');
+  chartInstances['chart-dau'] = new Chart(document.getElementById('chart-dau'), {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Active Users',
+        data: data,
+        borderColor: 'rgba(0,212,168,0.8)',
+        backgroundColor: 'rgba(0,212,168,0.1)',
+        fill: true,
+        tension: 0.4,
+        pointRadius: 2,
+        pointHoverRadius: 6
+      }]
+    },
+    options: chartOptions('DAU')
+  });
+}
+
+function chartOptions(title) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      x: { ticks: { color: '#5A5675', font: { size: 10 } }, grid: { color: 'rgba(123,97,255,0.05)' } },
+      y: { beginAtZero: true, ticks: { color: '#5A5675', font: { size: 10 } }, grid: { color: 'rgba(123,97,255,0.05)' } }
+    },
+    plugins: {
+      legend: { display: false }
+    }
+  };
+}
+
+function destroyChart(id) {
+  if (chartInstances[id]) {
+    chartInstances[id].destroy();
+    delete chartInstances[id];
+  }
+}
+
+// ═══════════════════════════════════════
+// EXPORT CSV
+// ═══════════════════════════════════════
+function exportCSV() {
+  var headers = ['Name', 'Email', 'Gender', 'Goal', 'Streak', 'Workout Days', 'Exercise Days', 'Total Sessions', 'Total Minutes', 'Premium', 'Last Active', 'Joined'];
+  var rows = filteredUsers.map(function(u) {
+    return [
+      u.profile && u.profile.name ? '"' + u.profile.name + '"' : '',
+      u.profile && u.profile.email ? u.profile.email : '',
+      u.profile && u.profile.gender ? u.profile.gender : '',
+      u.profile && u.profile.goal ? '"' + u.profile.goal + '"' : '',
+      u.progress && u.progress.streak ? u.progress.streak : 0,
+      u.progress && u.progress.workoutDays ? u.progress.workoutDays : 0,
+      u.progress && u.progress.exerciseDays ? u.progress.exerciseDays : 0,
+      u.progress && u.progress.totalSessions ? u.progress.totalSessions : 0,
+      u.progress && u.progress.totalMinutes ? u.progress.totalMinutes : 0,
+      u.profile && u.profile.premium ? 'Yes' : 'No',
+      u.lastActiveAt ? formatDate(u.lastActiveAt) : '',
+      u.lastSyncedAt ? formatDate(u.lastSyncedAt) : ''
+    ].join(',');
+  });
+
+  var csv = headers.join(',') + '\n' + rows.join('\n');
+  var blob = new Blob([csv], { type: 'text/csv' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'daily-kegel-users-' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ═══════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════
+function formatDate(ts) {
+  if (!ts) return '—';
+  var d = ts.toDate ? ts.toDate() : new Date(ts);
+  var today = new Date().toISOString().slice(0, 10);
+  var dateStr = d.toISOString().slice(0, 10);
+  if (dateStr === today) return 'Today';
+  var yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  if (dateStr === yesterday) return 'Yesterday';
+  return d.toLocaleDateString('en', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatDateTime(ts) {
+  if (!ts) return '—';
+  var d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleDateString('en', { month: 'short', day: 'numeric', year: 'numeric' }) + ' ' +
+         d.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' });
+}
+
+function escHtml(str) {
+  var div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// Close modal on escape
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeUserModal();
+});
+
+// Close modal on backdrop click
+document.getElementById('user-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeUserModal();
+});
+</script>
+</body>
+</html>
