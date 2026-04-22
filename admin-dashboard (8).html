@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Daily Kegel — Admin Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore-compat.js"></script>
+<style>
+:root {
+  --bg:#0f1117;--bg2:#161822;--bg3:#1c1f2e;--bg4:#242738;
+  --border:rgba(123,97,255,0.12);--border2:rgba(123,97,255,0.25);
+  --a:#7B61FF;--a2:#9B85FF;--a3:#5B41DF;
+  --green:#00D4A8;--green2:#00A882;--red:#FF6B6B;--orange:#FF9B4A;
+  --pink:#FF6B9D;--blue:#4A9EFF;--yellow:#FFD166;
+  --t1:#EEEAFF;--t2:#8E89AA;--t3:#5A5675;
+  --r1:16px;--r2:12px;--r3:8px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--t1);min-height:100vh;-webkit-font-smoothing:antialiased}
+
+/* LOGIN */
+#login-screen{position:fixed;inset:0;z-index:1000;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:20px}
+#login-screen.hidden{display:none}
+.login-card{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r1);padding:40px 32px;max-width:400px;width:100%;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,0.3)}
+.login-logo{font-size:48px;margin-bottom:16px}
+.login-title{font-size:24px;font-weight:700;margin-bottom:8px}
+.login-sub{font-size:14px;color:var(--t2);margin-bottom:24px;line-height:1.5}
+.google-btn{width:100%;padding:14px;background:#fff;color:#333;border:none;border-radius:var(--r2);font-size:15px;font-weight:600;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:10px}
+.google-btn:hover{background:#f5f5f5}
+.google-btn:disabled{opacity:0.4;cursor:not-allowed}
+.google-btn svg{width:20px;height:20px}
+.login-error{margin-top:12px;padding:10px 16px;background:rgba(255,107,107,0.1);border:1px solid rgba(255,107,107,0.2);border-radius:var(--r3);color:var(--red);font-size:13px;display:none}
+.login-error.visible{display:block}
+.login-hint{font-size:12px;color:var(--t3);margin-top:16px;line-height:1.5}
+.domain-box{margin-top:14px;padding:12px 16px;background:rgba(74,158,255,0.08);border:1px solid rgba(74,158,255,0.2);border-radius:8px;font-size:12px;color:#4A9EFF;text-align:left;display:none}
+.access-denied{margin-top:12px;padding:14px 16px;background:rgba(255,107,107,0.1);border:1px solid rgba(255,107,107,0.2);border-radius:var(--r3);color:var(--red);font-size:13px;display:none}
+.access-denied.visible{display:block}
+
+/* DASHBOARD */
+#dashboard{display:none;min-height:100vh}
+#dashboard.active{display:block}
+.dash-header{position:sticky;top:0;z-index:100;background:var(--bg2);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;backdrop-filter:blur(20px)}
+.dash-header-left{display:flex;align-items:center;gap:12px}
+.dash-logo{font-size:28px}
+.dash-title{font-size:20px;font-weight:700}
+.dash-title span{color:var(--a2)}
+.dash-header-right{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.dash-admin-badge{padding:4px 12px;background:rgba(123,97,255,0.12);border:1px solid var(--border);border-radius:20px;font-size:12px;color:var(--a2);font-weight:500}
+.dash-refresh{padding:8px 16px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r3);color:var(--t2);font-size:13px;font-weight:500;cursor:pointer;transition:all 0.2s}
+.dash-refresh:hover{border-color:var(--a);color:var(--a2)}
+.dash-refresh.loading{opacity:0.5;pointer-events:none}
+.dash-logout{padding:8px 16px;background:rgba(255,107,107,0.1);border:1px solid rgba(255,107,107,0.2);border-radius:var(--r3);color:var(--red);font-size:13px;font-weight:500;cursor:pointer;transition:all 0.2s}
+.dash-logout:hover{background:rgba(255,107,107,0.15)}
+.dash-content{max-width:1400px;margin:0 auto;padding:24px}
+
+/* TABS */
+.tabs{display:flex;gap:4px;margin-bottom:24px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r2);padding:4px;overflow-x:auto}
+.tab-btn{padding:10px 20px;background:transparent;border:none;border-radius:var(--r3);color:var(--t2);font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;white-space:nowrap}
+.tab-btn:hover{color:var(--t1)}
+.tab-btn.active{background:var(--a);color:#fff}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+
+/* STAT CARDS */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:28px}
+.stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r1);padding:20px;position:relative;overflow:hidden}
+.stat-card::after{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:3px 3px 0 0}
+.stat-card.purple::after{background:linear-gradient(90deg,var(--a2),var(--a))}
+.stat-card.green::after{background:linear-gradient(90deg,var(--green),var(--green2))}
+.stat-card.orange::after{background:linear-gradient(90deg,var(--yellow),var(--orange))}
+.stat-card.pink::after{background:linear-gradient(90deg,var(--pink),var(--red))}
+.stat-card.blue::after{background:linear-gradient(90deg,var(--blue),var(--a2))}
+.stat-card.red::after{background:linear-gradient(90deg,var(--red),var(--orange))}
+.stat-label{font-size:12px;color:var(--t2);font-weight:500;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px}
+.stat-value{font-size:28px;font-weight:800;line-height:1}
+.stat-value.purple{color:var(--a2)}.stat-value.green{color:var(--green)}.stat-value.orange{color:var(--orange)}
+.stat-value.pink{color:var(--pink)}.stat-value.blue{color:var(--blue)}.stat-value.red{color:var(--red)}
+.stat-sub{font-size:12px;color:var(--t3);margin-top:8px}
+
+/* SECTION */
+.section{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r1);margin-bottom:24px;overflow:hidden}
+.section-header{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+.section-title{font-size:16px;font-weight:700}
+.section-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* SEARCH / FILTER */
+.search-input{padding:8px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r3);color:var(--t1);font-size:13px;min-width:180px;transition:border-color 0.2s}
+.search-input::placeholder{color:var(--t3)}
+.search-input:focus{border-color:var(--a);outline:none}
+.filter-select{padding:8px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r3);color:var(--t1);font-size:13px;cursor:pointer}
+.filter-select option{background:var(--bg3);color:var(--t1)}
+
+/* TABLE */
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead{background:var(--bg3)}
+th{padding:12px 16px;text-align:left;font-weight:600;color:var(--t2);font-size:11px;text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap}
+td{padding:14px 16px;border-bottom:1px solid var(--border);white-space:nowrap}
+tr:hover td{background:rgba(123,97,255,0.03)}
+tr:last-child td{border-bottom:none}
+.user-cell{display:flex;align-items:center;gap:10px}
+.user-avatar{width:32px;height:32px;border-radius:50%;background:var(--bg4);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.user-name{font-weight:600}
+.user-email{font-size:11px;color:var(--t3)}
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600}
+.badge-green{background:rgba(0,212,168,0.12);color:var(--green)}
+.badge-orange{background:rgba(255,155,74,0.12);color:var(--orange)}
+.badge-purple{background:rgba(123,97,255,0.12);color:var(--a2)}
+.badge-red{background:rgba(255,107,107,0.12);color:var(--red)}
+.badge-blue{background:rgba(74,158,255,0.12);color:var(--blue)}
+.streak-fire{display:inline-flex;align-items:center;gap:4px}
+.streak-fire .fire{font-size:14px}
+.progress-bar-mini{width:60px;height:5px;background:var(--bg4);border-radius:3px;overflow:hidden;display:inline-block;vertical-align:middle;margin-left:6px}
+.progress-bar-mini-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--a2),var(--green));transition:width 0.5s}
+
+/* CHARTS */
+.charts-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:24px;margin-bottom:24px}
+.chart-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r1);padding:24px}
+.chart-title{font-size:14px;font-weight:600;margin-bottom:16px;color:var(--t2)}
+.chart-container{position:relative;height:250px}
+
+/* MODAL */
+#user-modal{position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,0.7);display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px)}
+#user-modal.active{display:flex}
+.modal-card{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r1);max-width:650px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.5)}
+.modal-header{padding:24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--bg2);z-index:1}
+.modal-user{display:flex;align-items:center;gap:14px}
+.modal-avatar{width:48px;height:48px;border-radius:50%;background:var(--bg4);display:flex;align-items:center;justify-content:center;font-size:24px}
+.modal-name{font-size:18px;font-weight:700}
+.modal-email{font-size:13px;color:var(--t2)}
+.modal-close{width:36px;height:36px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;cursor:pointer;border:none;color:var(--t2);font-size:18px;transition:all 0.2s}
+.modal-close:hover{background:var(--bg4);color:var(--t1)}
+.modal-body{padding:24px}
+.modal-section{margin-bottom:24px}
+.modal-section-title{font-size:12px;font-weight:600;color:var(--t3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.modal-stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.modal-stat{background:var(--bg3);border-radius:var(--r3);padding:14px}
+.modal-stat-label{font-size:11px;color:var(--t3);margin-bottom:4px}
+.modal-stat-value{font-size:20px;font-weight:700}
+.modal-info-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)}
+.modal-info-row:last-child{border-bottom:none}
+.modal-info-label{font-size:13px;color:var(--t2)}
+.modal-info-value{font-size:13px;font-weight:500;word-break:break-all;text-align:right;max-width:60%}
+.raw-data{background:var(--bg3);border-radius:var(--r3);padding:16px;font-size:11px;font-family:monospace;color:var(--t2);white-space:pre-wrap;word-break:break-all;max-height:300px;overflow-y:auto;line-height:1.6}
+
+/* LOADING / EMPTY */
+.loading-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;text-align:center}
+.spinner{width:40px;height:40px;border:3px solid var(--bg4);border-top-color:var(--a);border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:16px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{color:var(--t2);font-size:14px}
+.empty-state{padding:40px 20px;text-align:center}
+.empty-icon{font-size:48px;margin-bottom:12px;opacity:0.5}
+.empty-title{font-size:16px;font-weight:600;margin-bottom:6px}
+.empty-desc{font-size:13px;color:var(--t3)}
+
+/* PAGINATION */
+.pagination{display:flex;align-items:center;justify-content:center;gap:8px;padding:16px}
+.page-btn{padding:8px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r3);color:var(--t2);font-size:13px;cursor:pointer;transition:all 0.2s}
+.page-btn:hover{border-color:var(--a);color:var(--a2)}
+.page-btn.active{background:var(--a);border-color:var(--a);color:#fff}
+.page-btn:disabled{opacity:0.3;cursor:not-allowed}
+.export-btn{padding:8px 16px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r3);color:var(--t2);font-size:13px;font-weight:500;cursor:pointer;transition:all 0.2s;display:inline-flex;align-items:center;gap:6px}
+.export-btn:hover{border-color:var(--a);color:var(--a2)}
+
+/* LAST UPDATED */
+.last-updated{font-size:12px;color:var(--t3);margin-bottom:20px;display:flex;align-items:center;gap:6px}
+.last-updated .dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+
+/* RESPONSIVE */
+@media(max-width:768px){
+  .dash-content{padding:16px}
+  .stats-grid{grid-template-columns:1fr 1fr}
+  .charts-grid{grid-template-columns:1fr}
+  .search-input{min-width:140px}
+  .stat-value{font-size:22px}
+  .dash-header{padding:12px 16px}
+  .dash-title{font-size:16px}
+  .modal-stats-grid{grid-template-columns:1fr}
+  .tabs{gap:2px}
+  .tab-btn{padding:8px 14px;font-size:12px}
+}
+@media(max-width:480px){.stats-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">📊</div>
+    <div class="login-title">Admin Dashboard</div>
+    <div class="login-sub">Sign in with your admin Google account.</div>
+    <button class="google-btn" id="google-btn" onclick="handleGoogleLogin()">
+      <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+      Sign in with Google
+    </button>
+    <div class="login-error" id="login-error"></div>
+    <div class="domain-box" id="domain-info"></div>
+    <div class="access-denied" id="access-denied"></div>
+    <div class="login-hint">Only the admin email can access this dashboard.</div>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard">
+  <header class="dash-header">
+    <div class="dash-header-left">
+      <span class="dash-logo">📊</span>
+      <div class="dash-title">Daily Kegel <span>Dashboard</span></div>
+    </div>
+    <div class="dash-header-right">
+      <span class="dash-admin-badge" id="admin-badge">Admin</span>
+      <button class="dash-refresh" id="refresh-btn" onclick="refreshData()">↻ Refresh</button>
+      <button class="dash-logout" onclick="handleLogout()">Sign Out</button>
+    </div>
+  </header>
+  <div class="dash-content">
+    <div class="last-updated"><span class="dot"></span><span id="last-updated-text">Loading...</span></div>
+
+    <!-- TABS -->
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('overview')">Overview</button>
+      <button class="tab-btn" onclick="switchTab('users')">All Users</button>
+      <button class="tab-btn" onclick="switchTab('charts')">Charts</button>
+      <button class="tab-btn" onclick="switchTab('events')">Activity Log</button>
+    </div>
+
+    <!-- OVERVIEW TAB -->
+    <div class="tab-panel active" id="tab-overview">
+      <div class="stats-grid">
+        <div class="stat-card purple"><div class="stat-label">Total Registered Users</div><div class="stat-value purple" id="stat-total">—</div><div class="stat-sub" id="stat-total-sub">All time</div></div>
+        <div class="stat-card green"><div class="stat-label">Active Today</div><div class="stat-value green" id="stat-today">—</div><div class="stat-sub" id="stat-today-sub">—</div></div>
+        <div class="stat-card orange"><div class="stat-label">Total Workouts</div><div class="stat-value orange" id="stat-workouts">—</div><div class="stat-sub" id="stat-workouts-sub">All time</div></div>
+        <div class="stat-card pink"><div class="stat-label">Avg Streak</div><div class="stat-value pink" id="stat-streak">—</div><div class="stat-sub" id="stat-streak-sub">—</div></div>
+        <div class="stat-card blue"><div class="stat-label">7-Day Retention</div><div class="stat-value blue" id="stat-retention">—</div><div class="stat-sub" id="stat-retention-sub">—</div></div>
+        <div class="stat-card red"><div class="stat-label">30-Day Retention</div><div class="stat-value red" id="stat-retention30">—</div><div class="stat-sub" id="stat-retention30-sub">—</div></div>
+      </div>
+    </div>
+
+    <!-- USERS TAB -->
+    <div class="tab-panel" id="tab-users">
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">All Registered Users (All Time)</div>
+          <div class="section-actions">
+            <input type="text" class="search-input" id="user-search" placeholder="Search name, email, goal..." oninput="filterUsers()">
+            <select class="filter-select" id="filter-streak" onchange="filterUsers()">
+              <option value="all">All Streaks</option>
+              <option value="0">No Streak</option>
+              <option value="1-3">1-3 Days</option>
+              <option value="4-7">4-7 Days</option>
+              <option value="8+">8+ Days</option>
+            </select>
+            <select class="filter-select" id="filter-gender" onchange="filterUsers()">
+              <option value="all">All Genders</option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+            </select>
+            <button class="export-btn" onclick="exportCSV()">⬇ Export CSV</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>User</th><th>Email</th><th>Gender</th><th>Goal</th><th>Streak</th><th>Workout Days</th><th>Sessions</th><th>Exercise Day</th><th>Plan</th><th>Last Active</th><th>Joined</th></tr></thead>
+            <tbody id="users-tbody"><tr><td colspan="11"><div class="loading-state"><div class="spinner"></div><div class="loading-text">Loading users...</div></div></td></tr></tbody>
+          </table>
+        </div>
+        <div class="pagination" id="pagination"></div>
+      </div>
+    </div>
+
+    <!-- CHARTS TAB -->
+    <div class="tab-panel" id="tab-charts">
+      <div class="charts-grid">
+        <div class="chart-card"><div class="chart-title">Signups Over Time</div><div class="chart-container"><canvas id="chart-signups"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Exercise Day Distribution</div><div class="chart-container"><canvas id="chart-exercise-days"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Streak Distribution</div><div class="chart-container"><canvas id="chart-streaks"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Gender Split</div><div class="chart-container"><canvas id="chart-gender"></canvas></div></div>
+      </div>
+    </div>
+
+    <!-- EVENTS TAB -->
+    <div class="tab-panel" id="tab-events">
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">All Activity (All Time)</div>
+          <div class="section-actions">
+            <select class="filter-select" id="filter-event-type" onchange="loadEvents()">
+              <option value="all">All Events</option>
+              <option value="sign_up">Sign Ups</option>
+              <option value="login">Logins</option>
+              <option value="workout_complete">Workouts</option>
+              <option value="exercise_unlock">Unlocks</option>
+              <option value="article_read">Article Reads</option>
+              <option value="course_lesson_complete">Course</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table><thead><tr><th>Time</th><th>User</th><th>Event</th><th>Details</th></tr></thead>
+          <tbody id="events-tbody"><tr><td colspan="4"><div class="loading-state"><div class="spinner"></div><div class="loading-text">Loading events...</div></div></td></tr></tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- USER DETAIL MODAL -->
+<div id="user-modal">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="modal-user"><div class="modal-avatar" id="modal-avatar">👤</div><div><div class="modal-name" id="modal-name">—</div><div class="modal-email" id="modal-email">—</div></div></div>
+      <button class="modal-close" onclick="closeUserModal()">&times;</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════
+// FIREBASE CONFIG
+// ═══════════════════════════════════════
+var firebaseConfig={apiKey:"AIzaSyANvRzrcgecbjC8NKg3CnANfbL7cAal5yY",authDomain:"gen-lang-client-0389212046.firebaseapp.com",projectId:"gen-lang-client-0389212046",storageBucket:"gen-lang-client-0389212046.firebasestorage.app",messagingSenderId:"600528300623",appId:"1:600528300623:web:2c3de5a416d0e5c594d83a",measurementId:"G-XCZF718PW6"};
+firebase.initializeApp(firebaseConfig);
+var db=firebase.firestore();
+
+// ═══════════════════════════════════════
+// ADMIN EMAIL — ONLY THIS EMAIL CAN ACCESS
+// ═══════════════════════════════════════
+var ADMIN_EMAIL='positivityaround2@gmail.com';
+
+// ═══════════════════════════════════════
+// GLOBALS
+// ═══════════════════════════════════════
+var allUsers=[],filteredUsers=[],allEvents=[];
+var currentPage=1,usersPerPage=25;
+var chartInstances={};
+
+// ═══════════════════════════════════════
+// SHOW DOMAIN INFO
+// ═══════════════════════════════════════
+(function(){
+  var h=window.location.hostname;
+  var el=document.getElementById('domain-info');
+  if(el&&h&&h!=='localhost'&&h!=='127.0.0.1'){
+    el.style.display='block';
+    el.innerHTML='<b>Your domain:</b> '+h+'<br><span style="color:#8E89AA">If login fails, add <b>'+h+'</b> to Firebase > Authentication > Settings > Authorized domains</span>';
+  }
+})();
+
+// ═══════════════════════════════════════
+// LOGIN — Redirect-based Google Sign-In
+// ═══════════════════════════════════════
+function handleGoogleLogin(){
+  var btn=document.getElementById('google-btn');
+  btn.disabled=true;btn.innerHTML='Redirecting...';
+  document.getElementById('login-error').classList.remove('visible');
+  document.getElementById('access-denied').classList.remove('visible');
+  firebase.auth().signInWithRedirect(new firebase.auth.GoogleAuthProvider()).catch(function(e){
+    btn.disabled=false;btn.innerHTML='Sign in with Google';
+    if(e.code==='auth/unauthorized-domain')showLoginError('Add "'+window.location.hostname+'" to Firebase Authorized Domains.');
+    else showLoginError(e.message||e.code);
+  });
+}
+
+firebase.auth().getRedirectResult().then(function(r){
+  if(r.user)checkAccess(r.user);
+}).catch(function(e){
+  document.getElementById('google-btn').disabled=false;
+  document.getElementById('google-btn').innerHTML='Sign in with Google';
+  if(e.code==='auth/unauthorized-domain')showLoginError('Add "'+window.location.hostname+'" to Firebase Authorized Domains.');
+  else showLoginError(e.message||e.code);
+});
+
+firebase.auth().onAuthStateChanged(function(user){
+  if(user)checkAccess(user);
+});
+
+function checkAccess(user){
+  if(user.email===ADMIN_EMAIL){
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('dashboard').classList.add('active');
+    document.getElementById('admin-badge').textContent=user.email;
+    loadAllData();
+  } else {
+    // Not admin — show access denied, sign them out
+    firebase.auth().signOut();
+    var ad=document.getElementById('access-denied');
+    ad.textContent='Access denied. '+user.email+' is not authorized. Only '+ADMIN_EMAIL+' can access this dashboard.';
+    ad.classList.add('visible');
+    document.getElementById('google-btn').disabled=false;
+    document.getElementById('google-btn').innerHTML='Sign in with Google';
+  }
+}
+
+function showLoginError(msg){var el=document.getElementById('login-error');el.textContent=msg;el.classList.add('visible')}
+function handleLogout(){firebase.auth().signOut().then(function(){document.getElementById('dashboard').classList.remove('active');document.getElementById('login-screen').classList.remove('hidden');document.getElementById('google-btn').disabled=false;document.getElementById('google-btn').innerHTML='Sign in with Google'})}
+
+// ═══════════════════════════════════════
+// TABS
+// ═══════════════════════════════════════
+function switchTab(name){
+  document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active')});
+  document.querySelectorAll('.tab-panel').forEach(function(p){p.classList.remove('active')});
+  document.getElementById('tab-'+name).classList.add('active');
+  event.target.classList.add('active');
+  if(name==='charts')renderCharts();
+}
+
+// ═══════════════════════════════════════
+// DATA LOADING
+// ═══════════════════════════════════════
+function loadAllData(){loadUsers()}
+
+function refreshData(){
+  var b=document.getElementById('refresh-btn');b.classList.add('loading');b.textContent='Loading...';
+  loadUsers();
+  setTimeout(function(){b.classList.remove('loading');b.textContent='↻ Refresh'},2000);
+}
+
+function loadUsers(){
+  db.collection('users').get().then(function(snap){
+    allUsers=[];snap.forEach(function(doc){var d=doc.data();d._uid=doc.id;allUsers.push(d)});
+    filteredUsers=allUsers.slice();
+    renderStats();renderUsersTable();loadEvents();
+    document.getElementById('last-updated-text').textContent='Last updated: '+new Date().toLocaleString();
+  }).catch(function(e){
+    console.error('Load error:',e);
+    document.getElementById('last-updated-text').textContent='Error loading data. Check Firestore rules.';
+  });
+}
+
+// ═══════════════════════════════════════
+// STATS
+// ═══════════════════════════════════════
+function renderStats(){
+  var total=allUsers.length;
+  var today=new Date().toISOString().slice(0,10);
+  var d7=new Date(Date.now()-7*86400000).toISOString().slice(0,10);
+  var d30=new Date(Date.now()-30*86400000).toISOString().slice(0,10);
+
+  var activeToday=allUsers.filter(function(u){if(!u.lastActiveAt)return false;var d=u.lastActiveAt.toDate?u.lastActiveAt.toDate():new Date(u.lastActiveAt);return d.toISOString().slice(0,10)===today}).length;
+  var active7=allUsers.filter(function(u){if(!u.lastActiveAt)return false;var d=u.lastActiveAt.toDate?u.lastActiveAt.toDate():new Date(u.lastActiveAt);return d.toISOString().slice(0,10)>=d7}).length;
+  var active30=allUsers.filter(function(u){if(!u.lastActiveAt)return false;var d=u.lastActiveAt.toDate?u.lastActiveAt.toDate():new Date(u.lastActiveAt);return d.toISOString().slice(0,10)>=d30}).length;
+  var totalWorkouts=allUsers.reduce(function(s,u){return s+(u.progress&&u.progress.totalSessions?u.progress.totalSessions:0)},0);
+  var streaks=allUsers.map(function(u){return u.progress&&u.progress.streak?u.progress.streak:0});
+  var avgStreak=streaks.length>0?(streaks.reduce(function(a,b){return a+b},0)/streaks.length).toFixed(1):0;
+  var maxStreak=streaks.length>0?Math.max.apply(null,streaks):0;
+  var newToday=allUsers.filter(function(u){if(!u.lastSyncedAt)return false;var d=u.lastSyncedAt.toDate?u.lastSyncedAt.toDate():new Date(u.lastSyncedAt);return d.toISOString().slice(0,10)===today}).length;
+
+  document.getElementById('stat-total').textContent=total;
+  document.getElementById('stat-total-sub').textContent=newToday+' new today';
+  document.getElementById('stat-today').textContent=activeToday;
+  document.getElementById('stat-today-sub').textContent=total>0?Math.round(activeToday/total*100)+'% of total':'—';
+  document.getElementById('stat-workouts').textContent=totalWorkouts.toLocaleString();
+  document.getElementById('stat-workouts-sub').textContent=total>0?(totalWorkouts/total).toFixed(1)+' avg/user':'—';
+  document.getElementById('stat-streak').textContent=avgStreak;
+  document.getElementById('stat-streak-sub').textContent='Best: '+maxStreak+' days';
+  document.getElementById('stat-retention').textContent=total>0?Math.round(active7/total*100)+'%':'—';
+  document.getElementById('stat-retention-sub').textContent=active7+' of '+total;
+  document.getElementById('stat-retention30').textContent=total>0?Math.round(active30/total*100)+'%':'—';
+  document.getElementById('stat-retention30-sub').textContent=active30+' of '+total;
+}
+
+// ═══════════════════════════════════════
+// USER TABLE
+// ═══════════════════════════════════════
+function filterUsers(){
+  var s=document.getElementById('user-search').value.toLowerCase();
+  var sf=document.getElementById('filter-streak').value;
+  var gf=document.getElementById('filter-gender').value;
+  filteredUsers=allUsers.filter(function(u){
+    if(s){var n=(u.profile&&u.profile.name?u.profile.name.toLowerCase():'');var e=(u.profile&&u.profile.email?u.profile.email.toLowerCase():'');var g=(u.profile&&u.profile.goal?u.profile.goal.toLowerCase():'');var dn=(u.profile&&u.profile.displayName?u.profile.displayName.toLowerCase():'');if(n.indexOf(s)===-1&&e.indexOf(s)===-1&&g.indexOf(s)===-1&&dn.indexOf(s)===-1)return false}
+    var streak=u.progress&&u.progress.streak?u.progress.streak:0;
+    if(sf==='0'&&streak!==0)return false;if(sf==='1-3'&&(streak<1||streak>3))return false;if(sf==='4-7'&&(streak<4||streak>7))return false;if(sf==='8+'&&streak<8)return false;
+    var gender=u.profile&&u.profile.gender?u.profile.gender:'';
+    if(gf!=='all'&&gender!==gf)return false;
+    return true;
+  });
+  currentPage=1;renderUsersTable();
+}
+
+function renderUsersTable(){
+  var tbody=document.getElementById('users-tbody');
+  if(filteredUsers.length===0){tbody.innerHTML='<tr><td colspan="11"><div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-title">No users found</div></div></td></tr>';document.getElementById('pagination').innerHTML='';return}
+  var start=(currentPage-1)*usersPerPage,end=start+usersPerPage,page=filteredUsers.slice(start,end);
+  tbody.innerHTML=page.map(function(u){
+    var name=u.profile&&u.profile.name?u.profile.name:'Unknown';
+    var email=u.profile&&u.profile.email?u.profile.email:'—';
+    var goal=u.profile&&u.profile.goal?u.profile.goal:'—';
+    var gender=u.profile&&u.profile.gender?u.profile.gender:'—';
+    var streak=u.progress&&u.progress.streak?u.progress.streak:0;
+    var wd=u.progress&&u.progress.workoutDays?u.progress.workoutDays:0;
+    var sess=u.progress&&u.progress.totalSessions?u.progress.totalSessions:0;
+    var ed=u.progress&&u.progress.exerciseDays?u.progress.exerciseDays:0;
+    var prem=u.profile&&u.profile.premium;
+    var la=u.lastActiveAt?formatDate(u.lastActiveAt):'—';
+    var jo=u.lastSyncedAt?formatDate(u.lastSyncedAt):'—';
+    var ge=gender==='male'?'👨':gender==='female'?'👩':'👤';
+    var sb=streak===0?'<span class="badge badge-orange">0</span>':streak<4?'<span class="streak-fire"><span class="fire">🔥</span><span class="badge badge-orange">'+streak+'</span></span>':streak<8?'<span class="streak-fire"><span class="fire">🔥</span><span class="badge badge-purple">'+streak+'</span></span>':'<span class="streak-fire"><span class="fire">🔥</span><span class="badge badge-green">'+streak+'</span></span>';
+    var pb=prem?'<span class="badge badge-purple">Premium</span>':'<span class="badge badge-blue">Free</span>';
+    var prog=Math.min(100,Math.round(ed/21*100));
+    return '<tr onclick="showUserDetail(\''+u._uid+'\')" style="cursor:pointer"><td><div class="user-cell"><div class="user-avatar">'+ge+'</div><div><div class="user-name">'+esc(name)+'</div></div></div></td><td>'+esc(email)+'</td><td>'+esc(gender)+'</td><td>'+esc(goal)+'</td><td>'+sb+'</td><td>'+wd+'</td><td>'+sess+'</td><td>'+ed+' <span class="progress-bar-mini"><span class="progress-bar-mini-fill" style="width:'+prog+'%"></span></span></td><td>'+pb+'</td><td>'+la+'</td><td>'+jo+'</td></tr>';
+  }).join('');
+  renderPagination();
+}
+
+function renderPagination(){
+  var tp=Math.ceil(filteredUsers.length/usersPerPage),pag=document.getElementById('pagination');
+  if(tp<=1){pag.innerHTML='';return}
+  var h='<button class="page-btn" onclick="goToPage('+(currentPage-1)+')" '+(currentPage===1?'disabled':'')+'>← Prev</button>';
+  var s=Math.max(1,currentPage-2),e=Math.min(tp,currentPage+2);
+  for(var i=s;i<=e;i++)h+='<button class="page-btn'+(i===currentPage?' active':'')+'" onclick="goToPage('+i+')">'+i+'</button>';
+  h+='<button class="page-btn" onclick="goToPage('+(currentPage+1)+')" '+(currentPage===tp?'disabled':'')+'>Next →</button>';
+  pag.innerHTML=h;
+}
+function goToPage(p){var tp=Math.ceil(filteredUsers.length/usersPerPage);if(p<1||p>tp)return;currentPage=p;renderUsersTable();window.scrollTo({top:400,behavior:'smooth'})}
+
+// ═══════════════════════════════════════
+// USER DETAIL MODAL — EVERYTHING
+// ═══════════════════════════════════════
+function showUserDetail(uid){
+  var u=allUsers.find(function(x){return x._uid===uid});if(!u)return;
+  var name=u.profile&&u.profile.name?u.profile.name:'Unknown';
+  var email=u.profile&&u.profile.email?u.profile.email:'—';
+  var ge=u.profile&&u.profile.gender==='male'?'👨':u.profile&&u.profile.gender==='female'?'👩':'👤';
+  document.getElementById('modal-avatar').textContent=ge;
+  document.getElementById('modal-name').textContent=name;
+  document.getElementById('modal-email').textContent=email;
+
+  var body=document.getElementById('modal-body');
+  var p=u.progress||{},pr=u.profile||{},co=u.course||{},cn=u.content||{};
+
+  // Exercise unlock info
+  var exerciseNames=['Short Hold','Quick Flick','Long Hold','Elevator','Breathing Sync','Endurance'];
+  var unlockDays=[0,0,4,7,14,21];
+  var ed=p.exerciseDays||0;
+
+  body.innerHTML=
+    '<div class="modal-section"><div class="modal-section-title">Profile</div><div class="modal-stats-grid">'+
+    modalStat('Name',pr.name||'—')+modalStat('Email',email)+
+    modalStat('Gender',pr.gender||'—')+modalStat('Goal',pr.goal||'—')+
+    modalStat('Age',pr.age||'—')+modalStat('Plan',pr.premium?'Premium':'Free')+
+    modalStat('Display Name',pr.displayName||'—')+modalStat('Photo URL',pr.photoURL?'Yes':'No')+
+    '</div></div>'+
+
+    '<div class="modal-section"><div class="modal-section-title">Progress</div><div class="modal-stats-grid">'+
+    modalStat('Streak',p.streak||0)+'<div class="modal-stat"><div class="modal-stat-label">Best Streak</div><div class="modal-stat-value">'+(p.bestStreak||p.streak||0)+'</div></div>'+
+    modalStat('Workout Days',p.workoutDays||0)+modalStat('Exercise Day',p.exerciseDays||0)+
+    modalStat('Total Sessions',p.totalSessions||0)+modalStat('Total Minutes',p.totalMinutes||0)+
+    modalStat('Completed Days',p.completedDays?p.completedDays.length:0)+modalStat('Current Day',p.currentDay||1)+
+    '</div></div>'+
+
+    '<div class="modal-section"><div class="modal-section-title">Exercise Unlocks</div>'+
+    exerciseNames.map(function(n,i){
+      var unlocked=ed>=unlockDays[i];
+      return '<div class="modal-info-row"><span class="modal-info-label">'+n+'</span><span class="modal-info-value">'+(unlocked?'<span class="badge badge-green">Unlocked</span>':'<span class="badge badge-red">Locked (Day '+unlockDays[i]+')</span>')+'</span></div>';
+    }).join('')+
+    '</div>'+
+
+    '<div class="modal-section"><div class="modal-section-title">Course & Content</div>'+
+    infoRow('Course Progress',co.progress||0)+'%'+
+    infoRow('Lessons Completed',co.completedLessons?co.completedLessons.length:0)+
+    infoRow('Articles Read',cn.articlesRead?cn.articlesRead.length:0)+
+    infoRow('Bookmarked',cn.bookmarked?cn.bookmarked.length:0)+
+    '</div>'+
+
+    '<div class="modal-section"><div class="modal-section-title">Timestamps</div>'+
+    infoRow('Last Active',u.lastActiveAt?formatDateTime(u.lastActiveAt):'—')+
+    infoRow('Last Synced',u.lastSyncedAt?formatDateTime(u.lastSyncedAt):'—')+
+    infoRow('User ID',u._uid)+
+    '</div>'+
+
+    '<div class="modal-section"><div class="modal-section-title">Raw Data (Everything)</div><div class="raw-data">'+esc(JSON.stringify(u,function(k,v){if(v&&v.toDate)return v.toDate().toISOString();return v},2))+'</div></div>';
+
+  document.getElementById('user-modal').classList.add('active');
+}
+
+function modalStat(label,value){return '<div class="modal-stat"><div class="modal-stat-label">'+label+'</div><div class="modal-stat-value">'+value+'</div></div>'}
+function infoRow(label,value){return '<div class="modal-info-row"><span class="modal-info-label">'+label+'</span><span class="modal-info-value">'+value+'</span></div>'}
+
+function closeUserModal(){document.getElementById('user-modal').classList.remove('active')}
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeUserModal()});
+document.getElementById('user-modal').addEventListener('click',function(e){if(e.target===this)closeUserModal()});
+
+// ═══════════════════════════════════════
+// EVENTS
+// ═══════════════════════════════════════
+function loadEvents(){
+  var filter=document.getElementById('filter-event-type').value;
+  var queries=[];
+  if(filter==='all'){
+    queries.push(db.collectionGroup('events').orderBy('createdAt','desc').limit(200).get());
+  } else {
+    queries.push(db.collectionGroup('events').where('type','==',filter).orderBy('createdAt','desc').limit(200).get());
+  }
+  Promise.all(queries).then(function(results){
+    allEvents=[];
+    results.forEach(function(snap){snap.forEach(function(doc){var d=doc.data();d._id=doc.id;d._path=doc.ref.path;allEvents.push(d)})});
+    allEvents.sort(function(a,b){var ta=a.createdAt?((a.createdAt.toDate?a.createdAt.toDate():new Date(a.createdAt)).getTime()):0;var tb=b.createdAt?((b.createdAt.toDate?b.createdAt.toDate():new Date(b.createdAt)).getTime()):0;return tb-ta});
+    renderEvents();
+  }).catch(function(e){console.error('Events error:',e);document.getElementById('events-tbody').innerHTML='<tr><td colspan="4"><div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Could not load events</div><div class="empty-desc">'+esc(e.message||'')+'</div></div></td></tr>'});
+}
+
+function renderEvents(){
+  var tbody=document.getElementById('events-tbody');
+  if(allEvents.length===0){tbody.innerHTML='<tr><td colspan="4"><div class="empty-state"><div class="empty-icon">📭</div><div class="empty-title">No events yet</div></div></td></tr>';return}
+  tbody.innerHTML=allEvents.slice(0,100).map(function(e){
+    var time=e.createdAt?formatDateTime(e.createdAt):'—';
+    var user=e.email||e.uid||'—';
+    var type=e.type||'—';
+    var details=e.details||e.data||'—';
+    if(typeof details==='object')details=JSON.stringify(details);
+    var bc=type.indexOf('sign')>=0?'badge-green':type.indexOf('workout')>=0?'badge-orange':type.indexOf('unlock')>=0?'badge-purple':type.indexOf('article')>=0?'badge-blue':'badge-orange';
+    return '<tr><td>'+time+'</td><td>'+esc(user)+'</td><td><span class="badge '+bc+'">'+type+'</span></td><td style="max-width:300px;overflow:hidden;text-overflow:ellipsis">'+esc(String(details))+'</td></tr>';
+  }).join('');
+}
+
+// ═══════════════════════════════════════
+// CHARTS
+// ═══════════════════════════════════════
+function renderCharts(){
+  Object.values(chartInstances).forEach(function(c){c.destroy()});chartInstances={};
+  var chartOpts={responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8E89AA',font:{size:11}}}},scales:{x:{ticks:{color:'#5A5675',font:{size:10}},grid:{color:'rgba(123,97,255,0.06)'}},y:{ticks:{color:'#5A5675',font:{size:10}},grid:{color:'rgba(123,97,255,0.06)'}}}};
+
+  // Signups over time
+  var signupMap={};allUsers.forEach(function(u){if(u.lastSyncedAt){var d=(u.lastSyncedAt.toDate?u.lastSyncedAt.toDate():new Date(u.lastSyncedAt)).toISOString().slice(0,10);signupMap[d]=(signupMap[d]||0)+1}});
+  var sDates=Object.keys(signupMap).sort(),sCounts=sDates.map(function(d){return signupMap[d]});
+  chartInstances.signups=new Chart(document.getElementById('chart-signups'),{type:'line',data:{labels:sDates,datasets:[{label:'Signups',data:sCounts,borderColor:'#7B61FF',backgroundColor:'rgba(123,97,255,0.1)',fill:true,tension:0.3}]},options:chartOpts});
+
+  // Exercise day distribution
+  var edBuckets={'0':0,'1-3':0,'4-7':0,'8-14':0,'15-21':0,'22+':0};
+  allUsers.forEach(function(u){var ed=u.progress&&u.progress.exerciseDays?u.progress.exerciseDays:0;if(ed===0)edBuckets['0']++;else if(ed<=3)edBuckets['1-3']++;else if(ed<=7)edBuckets['4-7']++;else if(ed<=14)edBuckets['8-14']++;else if(ed<=21)edBuckets['15-21']++;else edBuckets['22+']++});
+  chartInstances.exdays=new Chart(document.getElementById('chart-exercise-days'),{type:'bar',data:{labels:Object.keys(edBuckets),datasets:[{label:'Users',data:Object.values(edBuckets),backgroundColor:['#FF6B6B','#FF9B4A','#FFD166','#7B61FF','#4A9EFF','#00D4A8']}]},options:chartOpts});
+
+  // Streak distribution
+  var stBuckets={'0':0,'1-3':0,'4-7':0,'8-14':0,'15+':0};
+  allUsers.forEach(function(u){var s=u.progress&&u.progress.streak?u.progress.streak:0;if(s===0)stBuckets['0']++;else if(s<=3)stBuckets['1-3']++;else if(s<=7)stBuckets['4-7']++;else if(s<=14)stBuckets['8-14']++;else stBuckets['15+']++});
+  chartInstances.streaks=new Chart(document.getElementById('chart-streaks'),{type:'bar',data:{labels:Object.keys(stBuckets),datasets:[{label:'Users',data:Object.values(stBuckets),backgroundColor:['#FF6B6B','#FF9B4A','#7B61FF','#4A9EFF','#00D4A8']}]},options:chartOpts});
+
+  // Gender
+  var gMap={male:0,female:0,other:0};allUsers.forEach(function(u){var g=u.profile&&u.profile.gender?u.profile.gender:'other';if(gMap[g]!==undefined)gMap[g]++;else gMap.other++});
+  chartInstances.gender=new Chart(document.getElementById('chart-gender'),{type:'doughnut',data:{labels:Object.keys(gMap),datasets:[{data:Object.values(gMap),backgroundColor:['#4A9EFF','#FF6B9D','#8E89AA']}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#8E89AA'}}}}});
+}
+
+// ═══════════════════════════════════════
+// EXPORT CSV
+// ═══════════════════════════════════════
+function exportCSV(){
+  var headers=['Name','Email','Gender','Goal','Age','Streak','Workout Days','Exercise Day','Total Sessions','Total Minutes','Plan','Last Active','Joined','User ID'];
+  var rows=filteredUsers.map(function(u){
+    var p=u.progress||{},pr=u.profile||{};
+    return [pr.name||'',pr.email||'',pr.gender||'',pr.goal||'',pr.age||'',p.streak||0,p.workoutDays||0,p.exerciseDays||0,p.totalSessions||0,p.totalMinutes||0,pr.premium?'Premium':'Free',u.lastActiveAt?formatDate(u.lastActiveAt):'',u.lastSyncedAt?formatDate(u.lastSyncedAt):'',u._uid].map(function(v){return '"'+String(v).replace(/"/g,'""')+'"'}).join(',');
+  });
+  var csv=headers.join(',')+'\n'+rows.join('\n');
+  var blob=new Blob([csv],{type:'text/csv'});
+  var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='users_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
+}
+
+// ═══════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════
+function formatDate(ts){if(!ts)return '—';var d=ts.toDate?ts.toDate():new Date(ts);return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+function formatDateTime(ts){if(!ts)return '—';var d=ts.toDate?ts.toDate():new Date(ts);return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'})}
+function esc(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML}
+</script>
+</body>
+</html>
